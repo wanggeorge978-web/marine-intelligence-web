@@ -241,10 +241,6 @@ function toneLabel(tone: RiskTone) {
   }[tone]
 }
 
-function timelineTone(slot: ForecastGridCell['timeline'][number]) {
-  return scoreTone(slot.bite)
-}
-
 function weatherCodeName(code?: number) {
   if (code === undefined) return '未知'
   if (code === 0) return '晴'
@@ -902,14 +898,6 @@ function CurrentArrow({ degrees }: { degrees: number }) {
   )
 }
 
-function DirectionArrow({ degrees, label }: { degrees?: number; label: string }) {
-  return (
-    <span className="direction-arrow" title={label} style={{ transform: `rotate(${degrees ?? 0}deg)` }}>
-      ↑
-    </span>
-  )
-}
-
 function TunaIcon() {
   return (
     <svg className="line-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -1090,6 +1078,7 @@ function MapView({
   const [selectedStationCode, setSelectedStationCode] = useState<string | null>(null)
   const [stationMinuteOffset, setStationMinuteOffset] = useState(0)
   const [inspectorOpen, setInspectorOpen] = useState(true)
+  const [inspectorPoint, setInspectorPoint] = useState({ x: 28, y: 92 })
 
   const loadPoint = useCallback(async (lng: number, lat: number) => {
     setPointError(null)
@@ -1102,6 +1091,8 @@ function MapView({
       setStationMinuteOffset(0)
       setWorkbenchPanel('forecast')
       setInspectorOpen(true)
+      const projected = mapRef.current?.project([lng, lat])
+      if (projected) setInspectorPoint({ x: projected.x, y: projected.y })
     } catch (reason) {
       setPointError(reason instanceof Error ? reason.message : '真实预报接口请求失败')
     } finally {
@@ -1208,26 +1199,13 @@ function MapView({
       const showCanadaCurrentPopup = (event: maplibregl.MapLayerMouseEvent) => {
         const feature = event.features?.[0]
         if (!feature) return
-        const coordinates = (feature.geometry as GeoJSON.Point).coordinates.slice() as [number, number]
         const props = feature.properties ?? {}
         if (props.code) {
           setSelectedStationCode(String(props.code))
           setWorkbenchPanel('stations')
           setInspectorOpen(true)
+          setInspectorPoint({ x: event.point.x, y: event.point.y })
         }
-        new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '260px' })
-          .setLngLat(coordinates)
-          .setHTML(`
-            <div class="map-popup">
-              <strong>${props.name ?? '加拿大潮流站'}</strong>
-              <span>${props.code ?? ''} · ${props.distance ?? '—'} km</span>
-              <p>预测时间：${props.predictionTimeLabel ?? '—'}</p>
-              <p>预测流速：${Number(props.speed ?? 0).toFixed(1)} kt</p>
-              <p>方向：${Math.round(Number(props.direction ?? 0))}°</p>
-              <small>DFO/CHS 站点潮流预测</small>
-            </div>
-          `)
-          .addTo(map)
       }
       map.on('click', 'canada-current-arrows', showCanadaCurrentPopup)
       map.on('click', 'canada-current-labels', showCanadaCurrentPopup)
@@ -1236,6 +1214,7 @@ function MapView({
       map.on('click', (event) => {
         const currentStationFeatures = map.queryRenderedFeatures(event.point, { layers: ['canada-current-arrows', 'canada-current-labels'] })
         if (currentStationFeatures.length) return
+        setInspectorPoint({ x: event.point.x, y: event.point.y })
         void loadPoint(event.lngLat.lng, event.lngLat.lat)
       })
     })
@@ -1284,6 +1263,8 @@ function MapView({
       const [lat, lng] = Math.abs(parts[0]) <= 90 ? [parts[0], parts[1]] : [parts[1], parts[0]]
       void loadPoint(lng, lat)
       setInspectorOpen(true)
+      const projected = mapRef.current?.project([lng, lat])
+      if (projected) setInspectorPoint({ x: projected.x, y: projected.y })
       mapRef.current?.flyTo({ center: [lng, lat], zoom: 8.3, duration: 800 })
     }
   }
@@ -1292,6 +1273,8 @@ function MapView({
     if (station.lng === undefined || station.lat === undefined) return
     setSelectedStationCode(station.stationCode)
     setStationMinuteOffset(0)
+    const projected = mapRef.current?.project([station.lng, station.lat])
+    if (projected) setInspectorPoint({ x: projected.x, y: projected.y })
     mapRef.current?.flyTo({ center: [station.lng, station.lat], zoom: 10.5, duration: 700 })
     setWorkbenchPanel('stations')
   }
@@ -1370,15 +1353,21 @@ function MapView({
       )}
 
       {!inspectorOpen && (
-        <button className="open-inspector-button" onClick={() => setInspectorOpen(true)}>
+        <button
+          className="open-inspector-button"
+          onClick={() => setInspectorOpen(true)}
+          style={{ '--popup-x': `${inspectorPoint.x}px`, '--popup-y': `${inspectorPoint.y}px` } as React.CSSProperties}
+        >
           <CloudSun size={18} />
           <span>查看此点预报</span>
         </button>
       )}
 
       {inspectorOpen && (
-      <div className="windy-bottom-sheet map-inspector-window">
-        <div className="bottom-sheet-grip" aria-hidden="true" />
+      <div
+        className="forecast-popup map-inspector-window"
+        style={{ '--popup-x': `${inspectorPoint.x}px`, '--popup-y': `${inspectorPoint.y}px` } as React.CSSProperties}
+      >
         <button className="workbench-close" aria-label="关闭预报窗口" onClick={() => setInspectorOpen(false)}>
           <X size={18} />
         </button>
@@ -1424,7 +1413,7 @@ function MapView({
         <div className="time-scrubber">
           <div>
             <strong>预测时间</strong>
-            <span>{activeTimelineSlot?.time ?? '--:--'} · 拖动后 DFO/CHS 潮流箭头同步更新</span>
+            <span>{activeTimelineSlot?.time ?? '--:--'} · 预报和潮流箭头同步</span>
           </div>
           <input
             aria-label="选择预测时间"
@@ -1437,24 +1426,14 @@ function MapView({
             onChange={(event) => setTimelineIndex(Number(event.target.value))}
           />
         </div>
-        <div className="timeline-days">
-          {['周二 19', '周三 20', '周四 21', '周五 22', '周六 23', '周日 24'].map((day) => <span key={day}>{day}</span>)}
-        </div>
-        <div className="meteo-grid">
-          <span className="row-label">小时</span>
-          {selected.timeline.map((slot, index) => <button className={index === activeTimelineIndex ? 'active-time' : ''} key={`t-${slot.time}`} onClick={() => setTimelineIndex(index)}>{slot.time}</button>)}
-          <span className="row-label">天气</span>
-          {selected.timeline.map((slot, index) => <span className={`meteo-tone ${toneClass(timelineTone(slot))} ${index === activeTimelineIndex ? 'active-time' : ''}`} key={`w-${slot.time}`}>{slot.bite}</span>)}
-          <span className="row-label">风向</span>
-          {selected.timeline.map((slot, index) => <span className={`wind-dir-cell ${index === activeTimelineIndex ? 'active-time' : ''}`} key={`dir-${slot.time}`}><DirectionArrow degrees={slot.windDirDeg} label={windDirectionDetail(slot.windDirDeg)} /></span>)}
-          <span className="row-label">风 kt</span>
-          {selected.timeline.map((slot, index) => <em className={`${toneClass(windTone(slot.windKts))} ${index === activeTimelineIndex ? 'active-time' : ''}`} key={`wind-${slot.time}`}>{slot.windKts}</em>)}
-          <span className="row-label">浪 m</span>
-          {selected.timeline.map((slot, index) => <em className={`${toneClass(waveTone(slot.waveM ?? 0))} ${index === activeTimelineIndex ? 'active-time' : ''}`} key={`wave-${slot.time}`}>{formatMeters(slot.waveM)}</em>)}
-          <span className="row-label">海流 kt</span>
-          {selected.timeline.map((slot, index) => <em className={`${toneClass(currentTone(slot.currentKts))} ${index === activeTimelineIndex ? 'active-time' : ''}`} key={`cur-${slot.time}`}>{slot.currentKts}</em>)}
-          <span className="row-label">海平面 m</span>
-          {selected.timeline.map((slot, index) => <em className={`${toneClass(tideTone(slot.tideHeightM ?? 0))} ${index === activeTimelineIndex ? 'active-time' : ''}`} key={`tide-${slot.time}`}>{slot.tideHeightM}</em>)}
+        <div className="popup-hour-strip" aria-label="分时预报">
+          {selected.timeline.map((slot, index) => (
+            <button className={index === activeTimelineIndex ? 'active-time' : ''} key={`popup-${slot.time}`} onClick={() => setTimelineIndex(index)}>
+              <strong>{slot.time}</strong>
+              <span>{slot.bite}</span>
+              <small>{slot.windKts}kt · {formatMeters(slot.waveM)}m</small>
+            </button>
+          ))}
         </div>
       </div>
       )}
