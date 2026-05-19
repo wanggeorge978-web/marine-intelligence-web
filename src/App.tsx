@@ -347,12 +347,8 @@ function MapView({
   const mapRef = useRef<maplibregl.Map | null>(null)
   const markerRef = useRef<maplibregl.Marker | null>(null)
   const [mode, setMode] = useState<OverlayMode>('wind')
-  const [showAreas, setShowAreas] = useState(true)
-  const [showWarnings, setShowWarnings] = useState(true)
-  const [showBluewater, setShowBluewater] = useState(true)
   const [searchText, setSearchText] = useState('')
   const gridGeojson = useMemo(() => gridToGeoJson(data.forecastGrid, mode), [data.forecastGrid, mode])
-  const activeMode = overlayModes.find((item) => item.id === mode) ?? overlayModes[0]
 
   useEffect(() => {
     if (!mapNode.current || mapRef.current) return
@@ -390,28 +386,6 @@ function MapView({
         paint: { 'text-color': '#152024', 'text-halo-color': '#ffffff', 'text-halo-width': 1.2 },
       })
 
-      map.addSource('pfma', { type: 'geojson', data: data.pfma })
-      map.addLayer({ id: 'pfma-fill', type: 'fill', source: 'pfma', paint: { 'fill-color': '#4b9cd3', 'fill-opacity': 0.12 } })
-      map.addLayer({ id: 'pfma-line', type: 'line', source: 'pfma', paint: { 'line-color': '#2364aa', 'line-width': 1.4, 'line-dasharray': [2, 2] } })
-
-      map.addSource('warnings', { type: 'geojson', data: data.warnings })
-      map.addLayer({ id: 'warnings-fill', type: 'fill', source: 'warnings', paint: { 'fill-color': '#e4572e', 'fill-opacity': 0.14 } })
-      map.addLayer({ id: 'warnings-line', type: 'line', source: 'warnings', paint: { 'line-color': '#c92818', 'line-width': 2 } })
-
-      map.addSource('albacore', { type: 'geojson', data: data.albacore })
-      map.addLayer({
-        id: 'albacore-circle',
-        type: 'circle',
-        source: 'albacore',
-        paint: {
-          'circle-color': '#f2b705',
-          'circle-radius': ['interpolate', ['linear'], ['get', 'score'], 60, 8, 90, 16],
-          'circle-opacity': 0.86,
-          'circle-stroke-width': 2,
-          'circle-stroke-color': '#34290a',
-        },
-      })
-
       map.on('click', (event) => {
         const forecast = sampledForecast(data.forecastGrid, event.lngLat.lng, event.lngLat.lat)
         setSelected(forecast)
@@ -429,7 +403,7 @@ function MapView({
       map.remove()
       mapRef.current = null
     }
-  }, [data.albacore, data.forecastGrid, data.pfma, data.warnings, gridGeojson, mode, setSelected])
+  }, [data.forecastGrid, gridGeojson, mode, setSelected])
 
   useEffect(() => {
     const map = mapRef.current
@@ -440,19 +414,6 @@ function MapView({
       map.setPaintProperty('forecast-grid-circles', 'circle-color', valueColorExpression(mode))
     }
   }, [gridGeojson, mode])
-
-  useEffect(() => {
-    const map = mapRef.current
-    if (!map?.isStyleLoaded()) return
-    const setVisibility = (ids: string[], value: boolean) => {
-      ids.forEach((id) => {
-        if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', value ? 'visible' : 'none')
-      })
-    }
-    setVisibility(['pfma-fill', 'pfma-line'], showAreas)
-    setVisibility(['warnings-fill', 'warnings-line'], showWarnings)
-    setVisibility(['albacore-circle'], showBluewater)
-  }, [showAreas, showWarnings, showBluewater])
 
   useEffect(() => {
     const map = mapRef.current
@@ -507,7 +468,7 @@ function MapView({
       <div className="windy-left-badges">
         <div><strong>{selected.score}</strong><span>海钓评分</span></div>
         <div><strong>{selected.weather.windKts}</strong><span>风 kt</span></div>
-        <div><strong>{selected.marine.waveM}</strong><span>浪 m</span></div>
+        <div><strong>{selected.water.currentKts}</strong><span>演示流 kt</span></div>
       </div>
 
       <div className="windy-layer-rail">
@@ -523,22 +484,8 @@ function MapView({
         })}
       </div>
 
-      <div className="windy-detail">
+      <div className="windy-bottom-sheet">
         <ForecastDetail forecast={selected} />
-      </div>
-
-      <div className="windy-layer-card">
-        <div className="mini-title">
-          <Layers size={18} />
-          <strong>{activeMode.label}</strong>
-        </div>
-        <div className="legend-bar"><span>低</span><div /><span>高</span></div>
-        <label className="switch-row"><span>PFMA</span><input type="checkbox" checked={showAreas} onChange={(event) => setShowAreas(event.target.checked)} /></label>
-        <label className="switch-row"><span>预警</span><input type="checkbox" checked={showWarnings} onChange={(event) => setShowWarnings(event.target.checked)} /></label>
-        <label className="switch-row"><span>蓝水</span><input type="checkbox" checked={showBluewater} onChange={(event) => setShowBluewater(event.target.checked)} /></label>
-      </div>
-
-      <div className="windy-timeline">
         <div className="timeline-days">
           {['周二 19', '周三 20', '周四 21', '周五 22', '周六 23', '周日 24'].map((day) => <span key={day}>{day}</span>)}
         </div>
@@ -551,9 +498,9 @@ function MapView({
           {selected.timeline.map((slot) => <em key={`wind-${slot.time}`}>{slot.windKts}</em>)}
           <span className="row-label">浪 m</span>
           {selected.timeline.map((slot) => <em key={`wave-${slot.time}`}>{slot.waveM}</em>)}
-          <span className="row-label">流 kt</span>
+          <span className="row-label">演示流 kt</span>
           {selected.timeline.map((slot) => <em key={`cur-${slot.time}`}>{slot.currentKts}</em>)}
-          <span className="row-label">潮 m</span>
+          <span className="row-label">演示潮 m</span>
           {selected.timeline.map((slot) => <em key={`tide-${slot.time}`}>{slot.tideHeightM}</em>)}
         </div>
       </div>
@@ -573,7 +520,6 @@ function ForecastDetail({ forecast }: { forecast: ForecastGridCell }) {
     <div className="panel detail-panel">
       <div className="detail-top">
         <div>
-          <p className="eyebrow">{forecast.area}</p>
           <h2>{forecast.name}</h2>
         </div>
         <div className="score-pill"><strong>{forecast.score}</strong><span>{scoreLabel(forecast.score)}</span></div>
@@ -581,12 +527,15 @@ function ForecastDetail({ forecast }: { forecast: ForecastGridCell }) {
       <div className="stats-grid">
         <StatCard icon={Wind} label="风" value={`${forecast.weather.windKts} 节`} detail={windDirectionName(forecast.weather.windDir)} />
         <StatCard icon={Waves} label="浪" value={`${forecast.marine.waveM} 米`} detail={`${forecast.marine.wavePeriodS} 秒周期`} />
-        <StatCard icon={Gauge} label="流" value={`${forecast.water.currentKts} 节`} detail={tideName(forecast.water.tide)} />
+        <StatCard icon={Gauge} label="演示水流" value={`${forecast.water.currentKts} 节`} detail={tideName(forecast.water.tide)} />
         <StatCard icon={ThermometerSun} label="水温" value={`${forecast.water.sstC} C`} detail={forecast.water.clarity} />
       </div>
       <div className="current-row">
         <CurrentArrow degrees={forecast.water.currentDirDeg} />
-        <span>水流方向 {forecast.water.currentDirDeg} 度，浪向 {forecast.marine.swellDirDeg} 度。{forecast.fish.tactic}</span>
+        <span>点击坐标：{forecast.lat.toFixed(3)}, {forecast.lng.toFixed(3)}。水流方向 {forecast.water.currentDirDeg} 度为演示算法结果，不是官方海流预报。{forecast.fish.tactic}</span>
+      </div>
+      <div className="accuracy-warning">
+        当前水流、潮位和鱼情均为演示网格。它们不是实况、不是官方预报，也没有接入潮汐站或海流模型；只能用于验证交互形式。
       </div>
       <div className="analysis-list">
         <div className="mini-title"><Gauge size={18} /><strong>点击点详情</strong></div>

@@ -228,7 +228,8 @@
   backdrop-filter: blur(14px);
 }
 
-.windy-timeline {
+.windy-timeline,
+.windy-bottom-sheet {
   position: absolute;
   left: 0;
   right: 0;
@@ -237,6 +238,50 @@
   background: rgba(255, 255, 255, 0.94);
   border-top: 5px solid rgba(20, 121, 132, 0.9);
   box-shadow: 0 -12px 30px rgba(0, 0, 0, 0.2);
+}
+
+.windy-bottom-sheet {
+  max-height: 56vh;
+  overflow: auto;
+}
+
+.windy-bottom-sheet .detail-panel {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  padding: 14px 18px 10px;
+}
+
+.windy-bottom-sheet .detail-top {
+  align-items: center;
+}
+
+.windy-bottom-sheet .stats-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 8px 0;
+}
+
+.windy-bottom-sheet .analysis-list {
+  display: none;
+}
+
+.windy-bottom-sheet .detail-panel .timeline {
+  display: none;
+}
+
+.accuracy-warning {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  color: #6d3c00;
+  background: #fff0c7;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.windy-bottom-sheet .current-row {
+  padding: 9px 10px;
 }
 
 .timeline-days {
@@ -1142,6 +1187,11 @@ select {
     max-height: 290px;
   }
 
+  .windy-bottom-sheet .stats-grid,
+  .windy-bottom-sheet .analysis-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .windy-layer-card {
     display: none;
   }
@@ -1218,7 +1268,8 @@ select {
     max-height: 235px;
   }
 
-  .windy-timeline {
+  .windy-timeline,
+  .windy-bottom-sheet {
     overflow-x: auto;
   }
 
