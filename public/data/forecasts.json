@@ -1,0 +1,154 @@
+[
+  {
+    "id": "ucluelet-bank",
+    "name": "Ucluelet Bank",
+    "lat": 48.83,
+    "lng": -125.55,
+    "area": "PFMA 23 Offshore Edge",
+    "updatedAt": "2026-05-19T16:30:00Z",
+    "score": 87,
+    "weather": {
+      "condition": "Broken cloud",
+      "airTempC": 14,
+      "windKts": 9,
+      "windDir": "NW",
+      "pressureTrend": "rising"
+    },
+    "water": {
+      "currentKts": 1.4,
+      "currentDirDeg": 132,
+      "swellM": 1.1,
+      "swellPeriodS": 11,
+      "tide": "flood",
+      "sstC": 12.8,
+      "clarity": "green-blue edge"
+    },
+    "fish": {
+      "target": "Chinook, Coho",
+      "biteWindow": "06:10-09:20, 16:45-18:30",
+      "tactic": "Work the current edge; troll 2.4-2.8 kt with bait near 70-110 ft.",
+      "risk": "Moderate traffic and afternoon chop."
+    },
+    "timeline": [
+      { "time": "06:00", "bite": 82, "windKts": 5, "currentKts": 1.0 },
+      { "time": "09:00", "bite": 91, "windKts": 7, "currentKts": 1.3 },
+      { "time": "12:00", "bite": 66, "windKts": 10, "currentKts": 1.6 },
+      { "time": "15:00", "bite": 72, "windKts": 12, "currentKts": 1.5 },
+      { "time": "18:00", "bite": 79, "windKts": 9, "currentKts": 1.2 }
+    ]
+  },
+  {
+    "id": "tofino-shelf",
+    "name": "Tofino Shelf Break",
+    "lat": 49.09,
+    "lng": -126.02,
+    "area": "PFMA 24 Outer Shelf",
+    "updatedAt": "2026-05-19T16:30:00Z",
+    "score": 78,
+    "weather": {
+      "condition": "High overcast",
+      "airTempC": 13,
+      "windKts": 12,
+      "windDir": "W",
+      "pressureTrend": "steady"
+    },
+    "water": {
+      "currentKts": 1.8,
+      "currentDirDeg": 94,
+      "swellM": 1.5,
+      "swellPeriodS": 12,
+      "tide": "ebb",
+      "sstC": 13.6,
+      "clarity": "clear blue"
+    },
+    "fish": {
+      "target": "Albacore probe, Coho",
+      "biteWindow": "08:20-11:15",
+      "tactic": "Run temperature break lines; watch bird activity and clean water.",
+      "risk": "Distance and west wind exposure."
+    },
+    "timeline": [
+      { "time": "06:00", "bite": 55, "windKts": 8, "currentKts": 1.2 },
+      { "time": "09:00", "bite": 80, "windKts": 10, "currentKts": 1.6 },
+      { "time": "12:00", "bite": 76, "windKts": 12, "currentKts": 1.8 },
+      { "time": "15:00", "bite": 67, "windKts": 15, "currentKts": 1.9 },
+      { "time": "18:00", "bite": 62, "windKts": 13, "currentKts": 1.4 }
+    ]
+  },
+  {
+    "id": "barkley-sound",
+    "name": "Barkley Sound Channels",
+    "lat": 48.93,
+    "lng": -125.24,
+    "area": "PFMA 23 Inshore",
+    "updatedAt": "2026-05-19T16:30:00Z",
+    "score": 69,
+    "weather": {
+      "condition": "Light rain",
+      "airTempC": 12,
+      "windKts": 6,
+      "windDir": "SE",
+      "pressureTrend": "falling"
+    },
+    "water": {
+      "currentKts": 0.7,
+      "currentDirDeg": 210,
+      "swellM": 0.4,
+      "swellPeriodS": 7,
+      "tide": "slack",
+      "sstC": 11.9,
+      "clarity": "tea stain"
+    },
+    "fish": {
+      "target": "Lingcod, Crab",
+      "biteWindow": "10:30-13:20",
+      "tactic": "Hold near structure on slack; set traps outside heavy eelgrass.",
+      "risk": "Rule check required before keeping bottomfish."
+    },
+    "timeline": [
+      { "time": "06:00", "bite": 44, "windKts": 4, "currentKts": 0.5 },
+      { "time": "09:00", "bite": 63, "windKts": 5, "currentKts": 0.6 },
+      { "time": "12:00", "bite": 77, "windKts": 7, "currentKts": 0.8 },
+      { "time": "15:00", "bite": 58, "windKts": 8, "currentKts": 0.9 },
+      { "time": "18:00", "bite": 51, "windKts": 6, "currentKts": 0.6 }
+    ]
+  },
+  {
+    "id": "swiftsure",
+    "name": "Swiftsure Bank",
+    "lat": 48.55,
+    "lng": -125.02,
+    "area": "PFMA 121 Sample",
+    "updatedAt": "2026-05-19T16:30:00Z",
+    "score": 74,
+    "weather": {
+      "condition": "Clear",
+      "airTempC": 15,
+      "windKts": 11,
+      "windDir": "NW",
+      "pressureTrend": "rising"
+    },
+    "water": {
+      "currentKts": 2.1,
+      "currentDirDeg": 44,
+      "swellM": 1.3,
+      "swellPeriodS": 10,
+      "tide": "flood",
+      "sstC": 12.4,
+      "clarity": "mixed"
+    },
+    "fish": {
+      "target": "Halibut, Chinook",
+      "biteWindow": "07:00-08:45, 14:50-16:10",
+      "tactic": "Anchor only in settled windows; drift baits on manageable current.",
+      "risk": "Strong current, verify halibut notices."
+    },
+    "timeline": [
+      { "time": "06:00", "bite": 69, "windKts": 7, "currentKts": 1.7 },
+      { "time": "09:00", "bite": 75, "windKts": 8, "currentKts": 2.0 },
+      { "time": "12:00", "bite": 61, "windKts": 11, "currentKts": 2.3 },
+      { "time": "15:00", "bite": 82, "windKts": 13, "currentKts": 2.1 },
+      { "time": "18:00", "bite": 56, "windKts": 10, "currentKts": 1.6 }
+    ]
+  }
+]

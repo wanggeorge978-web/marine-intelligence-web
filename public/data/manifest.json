@@ -1,0 +1,25 @@
+{
+  "generatedAt": "2026-05-19T16:30:00Z",
+  "build": "demo-static-mvp-v1",
+  "coverage": "Vancouver Island west coast sample grid",
+  "sources": [
+    {
+      "name": "Marine forecast sample",
+      "owner": "ECCC placeholder",
+      "freshness": "Demo data, replace by GitHub Action",
+      "status": "demo"
+    },
+    {
+      "name": "PFMA rules sample",
+      "owner": "DFO placeholder",
+      "freshness": "Demo data, verify with official notices",
+      "status": "demo"
+    },
+    {
+      "name": "SST and bluewater sample",
+      "owner": "NOAA/Copernicus placeholder",
+      "freshness": "Demo data, not operational",
+      "status": "demo"
+    }
+  ]
+}

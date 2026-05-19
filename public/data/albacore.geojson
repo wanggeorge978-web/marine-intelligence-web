@@ -1,0 +1,44 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "alb-outer-tofino",
+        "name": "Outer Tofino temperature break",
+        "score": 84,
+        "tempC": 15.8,
+        "chlorophyll": "low",
+        "travelNm": 44,
+        "note": "Strongest demo tuna signal, but verify range and fuel."
+      },
+      "geometry": { "type": "Point", "coordinates": [-126.42, 49.12] }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "alb-ucluelet-edge",
+        "name": "Ucluelet blue-green edge",
+        "score": 71,
+        "tempC": 14.2,
+        "chlorophyll": "medium",
+        "travelNm": 31,
+        "note": "Closer scout option with mixed water."
+      },
+      "geometry": { "type": "Point", "coordinates": [-126.02, 48.78] }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "alb-west-lane",
+        "name": "West lane sample",
+        "score": 63,
+        "tempC": 13.9,
+        "chlorophyll": "medium",
+        "travelNm": 52,
+        "note": "Needs cleaner water confirmation."
+      },
+      "geometry": { "type": "Point", "coordinates": [-126.72, 48.6] }
+    }
+  ]
+}

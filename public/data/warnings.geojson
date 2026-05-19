@@ -1,0 +1,35 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "warn-west-wind",
+        "type": "Marine weather",
+        "severity": "advisory",
+        "title": "Afternoon west wind build",
+        "details": "Demo advisory: exposed offshore routes may become lumpy after 14:00.",
+        "updatedAt": "2026-05-19T16:30:00Z"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[-126.4, 48.5], [-125.3, 48.5], [-125.3, 49.45], [-126.4, 49.45], [-126.4, 48.5]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "warn-shellfish",
+        "type": "Shellfish sanitation",
+        "severity": "watch",
+        "title": "Shellfish status check required",
+        "details": "Demo watch: verify official contamination closures before harvesting.",
+        "updatedAt": "2026-05-19T16:30:00Z"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[-125.55, 48.72], [-124.95, 48.72], [-124.95, 49.1], [-125.55, 49.1], [-125.55, 48.72]]]
+      }
+    }
+  ]
+}

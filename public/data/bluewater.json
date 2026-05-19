@@ -1,0 +1,26 @@
+[
+  {
+    "id": "bw-1",
+    "zone": "Outer Tofino Break",
+    "sstC": 15.8,
+    "breakStrength": "strong",
+    "color": "clean cobalt",
+    "note": "Best exploratory bluewater signal in the sample grid."
+  },
+  {
+    "id": "bw-2",
+    "zone": "Ucluelet 35 nm edge",
+    "sstC": 14.2,
+    "breakStrength": "moderate",
+    "color": "blue-green",
+    "note": "Good edge, shorter run, more mixed chlorophyll."
+  },
+  {
+    "id": "bw-3",
+    "zone": "Swiftsure west lane",
+    "sstC": 13.1,
+    "breakStrength": "weak",
+    "color": "mixed green",
+    "note": "More salmon-oriented than tuna-oriented today."
+  }
+]

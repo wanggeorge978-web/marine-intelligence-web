@@ -1,0 +1,38 @@
+[
+  {
+    "id": "rule-23-salmon",
+    "area": "PFMA 23",
+    "species": "Salmon",
+    "status": "restricted",
+    "summary": "Demo rule: retention and size limits vary by sub-area. Verify official DFO notices before fishing.",
+    "source": "DFO official notices placeholder",
+    "updatedAt": "2026-05-19T16:30:00Z"
+  },
+  {
+    "id": "rule-24-crab",
+    "area": "PFMA 24",
+    "species": "Crab",
+    "status": "open",
+    "summary": "Demo rule: traps require marked floats and shellfish contamination checks.",
+    "source": "DFO shellfish placeholder",
+    "updatedAt": "2026-05-19T16:30:00Z"
+  },
+  {
+    "id": "rule-121-halibut",
+    "area": "PFMA 121",
+    "species": "Halibut",
+    "status": "restricted",
+    "summary": "Demo rule: seasonal measures and possession limits require official verification.",
+    "source": "DFO halibut notice placeholder",
+    "updatedAt": "2026-05-19T16:30:00Z"
+  },
+  {
+    "id": "rule-bottomfish",
+    "area": "Inshore rockfish areas",
+    "species": "Rockfish/Lingcod",
+    "status": "closed",
+    "summary": "Demo rule: some conservation areas are closed to bottom contact gear.",
+    "source": "DFO RCA placeholder",
+    "updatedAt": "2026-05-19T16:30:00Z"
+  }
+]

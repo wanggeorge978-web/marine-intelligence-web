@@ -1,0 +1,16 @@
+{
+  "name": "Marine Intelligence Web MVP",
+  "short_name": "Marine Intel",
+  "description": "Fishing weather, current, rules, warnings, bluewater, and trip check MVP.",
+  "start_url": "./#/map",
+  "display": "standalone",
+  "background_color": "#eef4f1",
+  "theme_color": "#13272e",
+  "icons": [
+    {
+      "src": "favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
