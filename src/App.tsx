@@ -41,6 +41,7 @@ import type {
 } from './types'
 
 type OverlayMode = 'weather' | 'wind' | 'waves' | 'current' | 'tide' | 'sst'
+type RiskTone = 'excellent' | 'good' | 'fair' | 'poor' | 'danger'
 
 const pages: Array<{ id: PageId; label: string; icon: typeof Map }> = [
   { id: 'map', label: '海况地图', icon: Map },
@@ -137,6 +138,101 @@ function scoreLabel(score: number) {
   if (score >= 70) return '可以出钓'
   if (score >= 55) return '勉强可钓'
   return '不建议'
+}
+
+function toneClass(tone: RiskTone) {
+  return `tone-${tone}`
+}
+
+function scoreTone(score: number): RiskTone {
+  if (score >= 86) return 'excellent'
+  if (score >= 72) return 'good'
+  if (score >= 56) return 'fair'
+  if (score >= 40) return 'poor'
+  return 'danger'
+}
+
+function windTone(windKts: number): RiskTone {
+  if (windKts <= 7) return 'excellent'
+  if (windKts <= 12) return 'good'
+  if (windKts <= 17) return 'fair'
+  if (windKts <= 23) return 'poor'
+  return 'danger'
+}
+
+function waveTone(waveM: number): RiskTone {
+  if (waveM <= 0.7) return 'excellent'
+  if (waveM <= 1.2) return 'good'
+  if (waveM <= 1.8) return 'fair'
+  if (waveM <= 2.6) return 'poor'
+  return 'danger'
+}
+
+function currentTone(currentKts: number): RiskTone {
+  if (currentKts <= 0.4) return 'fair'
+  if (currentKts <= 1.2) return 'excellent'
+  if (currentKts <= 1.8) return 'good'
+  if (currentKts <= 2.6) return 'poor'
+  return 'danger'
+}
+
+function tideTone(tideHeightM: number): RiskTone {
+  const height = Math.abs(tideHeightM)
+  if (height <= 0.6) return 'excellent'
+  if (height <= 1.2) return 'good'
+  if (height <= 1.8) return 'fair'
+  if (height <= 2.5) return 'poor'
+  return 'danger'
+}
+
+function sstTone(sstC: number): RiskTone {
+  if (sstC >= 11 && sstC <= 15) return 'excellent'
+  if (sstC >= 8 && sstC <= 17) return 'good'
+  if (sstC >= 6 && sstC <= 19) return 'fair'
+  return 'poor'
+}
+
+function overlayTone(mode: OverlayMode, forecast: ForecastGridCell): RiskTone {
+  if (mode === 'weather') return scoreTone(forecast.score)
+  if (mode === 'wind') return windTone(forecast.weather.windKts)
+  if (mode === 'waves') return waveTone(forecast.marine.waveM)
+  if (mode === 'current') return currentTone(forecast.water.currentKts)
+  if (mode === 'tide') return tideTone(forecast.marine.tideHeightM)
+  return sstTone(forecast.water.sstC)
+}
+
+function toneColor(tone: RiskTone) {
+  return {
+    excellent: '#00c853',
+    good: '#7ed321',
+    fair: '#ffd400',
+    poor: '#ff8f00',
+    danger: '#d7191c',
+  }[tone]
+}
+
+function toneSoftColor(tone: RiskTone) {
+  return {
+    excellent: 'rgba(0, 200, 83, 0.32)',
+    good: 'rgba(126, 211, 33, 0.28)',
+    fair: 'rgba(255, 212, 0, 0.28)',
+    poor: 'rgba(255, 143, 0, 0.30)',
+    danger: 'rgba(215, 25, 28, 0.34)',
+  }[tone]
+}
+
+function toneLabel(tone: RiskTone) {
+  return {
+    excellent: '很好',
+    good: '良好',
+    fair: '谨慎',
+    poor: '偏差',
+    danger: '危险',
+  }[tone]
+}
+
+function timelineTone(slot: ForecastGridCell['timeline'][number]) {
+  return scoreTone(slot.bite)
 }
 
 function weatherCodeName(code?: number) {
@@ -545,15 +641,26 @@ function TunaIcon() {
   )
 }
 
-function StatCard({ icon: Icon, label, value, detail }: { icon: typeof Wind; label: string; value: string; detail: string }) {
+function StatCard({ icon: Icon, label, value, detail, tone }: { icon: typeof Wind; label: string; value: string; detail: string; tone: RiskTone }) {
   return (
-    <div className="stat-card">
+    <div className={`stat-card ${toneClass(tone)}`}>
       <Icon size={18} />
       <span>{label}</span>
       <strong>{value}</strong>
       <small>{detail}</small>
     </div>
   )
+}
+
+function selectedPointGeoJson(forecast: ForecastGridCell): GeoJSON.FeatureCollection<GeoJSON.Point> {
+  return {
+    type: 'FeatureCollection',
+    features: [{
+      type: 'Feature',
+      properties: { score: forecast.score },
+      geometry: { type: 'Point', coordinates: [forecast.lng, forecast.lat] },
+    }],
+  }
 }
 
 function Shell({ page, setPage, children }: { page: PageId; setPage: (page: PageId) => void; children: React.ReactNode }) {
@@ -597,7 +704,7 @@ function MapView({
 }) {
   const mapNode = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
-  const markerRef = useRef<maplibregl.Marker | null>(null)
+  const selectedRef = useRef(selected)
   const [mode, setMode] = useState<OverlayMode>('wind')
   const [searchText, setSearchText] = useState('')
   const [isLoadingPoint, setIsLoadingPoint] = useState(false)
@@ -617,6 +724,10 @@ function MapView({
   }, [setSelected])
 
   useEffect(() => {
+    selectedRef.current = selected
+  }, [selected])
+
+  useEffect(() => {
     if (!mapNode.current || mapRef.current) return
     const map = new maplibregl.Map({
       container: mapNode.current,
@@ -630,13 +741,55 @@ function MapView({
     mapRef.current = map
 
     map.on('load', () => {
+      const initialSelected = selectedRef.current
+      const initialTone = scoreTone(initialSelected.score)
+      map.addSource('selected-forecast-point', { type: 'geojson', data: selectedPointGeoJson(initialSelected) })
+      map.addLayer({
+        id: 'selected-forecast-halo',
+        type: 'circle',
+        source: 'selected-forecast-point',
+        paint: {
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 5, 20, 10, 42],
+          'circle-color': toneColor(initialTone),
+          'circle-opacity': 0.24,
+          'circle-stroke-width': 0,
+        },
+      })
+      map.addLayer({
+        id: 'selected-forecast-dot',
+        type: 'circle',
+        source: 'selected-forecast-point',
+        paint: {
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 5, 9, 10, 16],
+          'circle-color': toneColor(initialTone),
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': 4,
+          'circle-opacity': 0.96,
+        },
+      })
+      map.addLayer({
+        id: 'selected-forecast-score',
+        type: 'symbol',
+        source: 'selected-forecast-point',
+        layout: {
+          'text-field': ['to-string', ['get', 'score']],
+          'text-size': 12,
+          'text-font': ['Open Sans Bold'],
+          'text-anchor': 'center',
+          'text-allow-overlap': true,
+        },
+        paint: {
+          'text-color': '#ffffff',
+          'text-halo-color': 'rgba(0, 0, 0, 0.18)',
+          'text-halo-width': 1,
+        },
+      })
       map.on('click', (event) => {
         void loadPoint(event.lngLat.lng, event.lngLat.lat)
       })
     })
 
     return () => {
-      markerRef.current?.remove()
       map.remove()
       mapRef.current = null
     }
@@ -645,10 +798,16 @@ function MapView({
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
-    if (!markerRef.current) {
-      markerRef.current = new maplibregl.Marker({ color: '#13272e' }).setLngLat([selected.lng, selected.lat]).addTo(map)
-    } else {
-      markerRef.current.setLngLat([selected.lng, selected.lat])
+    const source = map.getSource('selected-forecast-point') as maplibregl.GeoJSONSource | undefined
+    if (source) {
+      source.setData(selectedPointGeoJson(selected))
+    }
+    const tone = scoreTone(selected.score)
+    if (map.getLayer('selected-forecast-halo')) {
+      map.setPaintProperty('selected-forecast-halo', 'circle-color', toneColor(tone))
+    }
+    if (map.getLayer('selected-forecast-dot')) {
+      map.setPaintProperty('selected-forecast-dot', 'circle-color', toneColor(tone))
     }
   }, [selected])
 
@@ -664,9 +823,20 @@ function MapView({
     }
   }
 
+  const scoreRiskTone = scoreTone(selected.score)
+  const activeTone = overlayTone(mode, selected)
+  const layerLabel = overlayModes.find((item) => item.id === mode)?.label ?? '图层'
+  const mapStyleVars = {
+    '--score-color': toneColor(scoreRiskTone),
+    '--score-soft': toneSoftColor(scoreRiskTone),
+    '--mode-color': toneColor(activeTone),
+    '--mode-soft': toneSoftColor(activeTone),
+  } as React.CSSProperties
+
   return (
-    <section className="windy-map-page">
+    <section className={`windy-map-page ${toneClass(scoreRiskTone)} mode-${toneClass(activeTone)}`} style={mapStyleVars}>
       <div ref={mapNode} className="windy-map-canvas" />
+      <div className="forecast-color-wash" aria-hidden="true" />
 
       <div className="windy-topbar">
         <div className="windy-search">
@@ -692,9 +862,9 @@ function MapView({
       </div>
 
       <div className="windy-left-badges">
-        <div><strong>{selected.score}</strong><span>海钓评分</span></div>
-        <div><strong>{selected.weather.windKts}</strong><span>风 kt</span></div>
-        <div><strong>{selected.water.currentKts}</strong><span>海流 kt</span></div>
+        <div className={toneClass(scoreRiskTone)}><strong>{selected.score}</strong><span>海钓评分</span></div>
+        <div className={toneClass(windTone(selected.weather.windKts))}><strong>{selected.weather.windKts}</strong><span>风 kt</span></div>
+        <div className={toneClass(currentTone(selected.water.currentKts))}><strong>{selected.water.currentKts}</strong><span>海流 kt</span></div>
       </div>
 
       <div className="windy-layer-rail">
@@ -710,6 +880,12 @@ function MapView({
         })}
       </div>
 
+      <div className="windy-color-legend">
+        <div><strong>{layerLabel}</strong><span>{toneLabel(activeTone)}</span></div>
+        <i />
+        <small>好</small><small>谨慎</small><small>危险</small>
+      </div>
+
       <div className="windy-bottom-sheet">
         <ForecastDetail forecast={selected} isLoading={isLoadingPoint} error={pointError} />
         <div className="timeline-days">
@@ -719,15 +895,15 @@ function MapView({
           <span className="row-label">小时</span>
           {selected.timeline.map((slot) => <b key={`t-${slot.time}`}>{slot.time}</b>)}
           <span className="row-label">天气</span>
-          {selected.timeline.map((slot) => <span key={`w-${slot.time}`}>☀</span>)}
+          {selected.timeline.map((slot) => <span className={`meteo-tone ${toneClass(timelineTone(slot))}`} key={`w-${slot.time}`}>{slot.bite}</span>)}
           <span className="row-label">风 kt</span>
-          {selected.timeline.map((slot) => <em key={`wind-${slot.time}`}>{slot.windKts}</em>)}
+          {selected.timeline.map((slot) => <em className={toneClass(windTone(slot.windKts))} key={`wind-${slot.time}`}>{slot.windKts}</em>)}
           <span className="row-label">浪 m</span>
-          {selected.timeline.map((slot) => <em key={`wave-${slot.time}`}>{slot.waveM}</em>)}
+          {selected.timeline.map((slot) => <em className={toneClass(waveTone(slot.waveM ?? 0))} key={`wave-${slot.time}`}>{slot.waveM}</em>)}
           <span className="row-label">海流 kt</span>
-          {selected.timeline.map((slot) => <em key={`cur-${slot.time}`}>{slot.currentKts}</em>)}
+          {selected.timeline.map((slot) => <em className={toneClass(currentTone(slot.currentKts))} key={`cur-${slot.time}`}>{slot.currentKts}</em>)}
           <span className="row-label">海平面 m</span>
-          {selected.timeline.map((slot) => <em key={`tide-${slot.time}`}>{slot.tideHeightM}</em>)}
+          {selected.timeline.map((slot) => <em className={toneClass(tideTone(slot.tideHeightM ?? 0))} key={`tide-${slot.time}`}>{slot.tideHeightM}</em>)}
         </div>
       </div>
     </section>
@@ -750,13 +926,13 @@ function ForecastDetail({ forecast, isLoading, error }: { forecast: ForecastGrid
           <p className="eyebrow">真实 API 点预报</p>
           <h2>{forecast.name}</h2>
         </div>
-        <div className="score-pill"><strong>{forecast.score}</strong><span>{scoreLabel(forecast.score)}</span></div>
+        <div className={`score-pill ${toneClass(scoreTone(forecast.score))}`}><strong>{forecast.score}</strong><span>{scoreLabel(forecast.score)}</span></div>
       </div>
       <div className="stats-grid">
-        <StatCard icon={Wind} label="风" value={`${forecast.weather.windKts} 节`} detail={windDirectionName(forecast.weather.windDir)} />
-        <StatCard icon={Waves} label="浪" value={`${forecast.marine.waveM} 米`} detail={`${forecast.marine.wavePeriodS} 秒周期`} />
-        <StatCard icon={Gauge} label="海流" value={`${forecast.water.currentKts} 节`} detail={`${forecast.water.currentDirDeg} 度 / ${tideName(forecast.water.tide)}`} />
-        <StatCard icon={ThermometerSun} label="水温" value={`${forecast.water.sstC} C`} detail={forecast.water.clarity} />
+        <StatCard icon={Wind} label="风" value={`${forecast.weather.windKts} 节`} detail={windDirectionName(forecast.weather.windDir)} tone={windTone(forecast.weather.windKts)} />
+        <StatCard icon={Waves} label="浪" value={`${forecast.marine.waveM} 米`} detail={`${forecast.marine.wavePeriodS} 秒周期`} tone={waveTone(forecast.marine.waveM)} />
+        <StatCard icon={Gauge} label="海流" value={`${forecast.water.currentKts} 节`} detail={`${forecast.water.currentDirDeg} 度 / ${tideName(forecast.water.tide)}`} tone={currentTone(forecast.water.currentKts)} />
+        <StatCard icon={ThermometerSun} label="水温" value={`${forecast.water.sstC} C`} detail={forecast.water.clarity} tone={sstTone(forecast.water.sstC)} />
       </div>
       <div className="current-row">
         <CurrentArrow degrees={forecast.water.currentDirDeg} />

@@ -35,6 +35,73 @@
   filter: saturate(1.2) contrast(1.04);
 }
 
+.forecast-color-wash {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 50% 45%, var(--mode-soft) 0, var(--mode-soft) 16%, transparent 44%),
+    linear-gradient(180deg, transparent 0, rgba(10, 28, 34, 0.12) 100%);
+  mix-blend-mode: multiply;
+}
+
+.forecast-marker {
+  width: 54px;
+  height: 54px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  color: #102025;
+  background: #ffffff;
+  border: 5px solid var(--marker-color, #00c853);
+  box-shadow:
+    0 0 0 8px color-mix(in srgb, var(--marker-color, #00c853) 28%, transparent),
+    0 14px 30px rgba(0, 0, 0, 0.32);
+}
+
+.forecast-marker span {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  color: #ffffff;
+  background: var(--marker-color, #00c853);
+  font-size: 17px;
+  font-weight: 900;
+}
+
+.tone-excellent {
+  --tone-color: #00c853;
+  --tone-soft: rgba(0, 200, 83, 0.16);
+  --tone-ink: #064e2a;
+}
+
+.tone-good {
+  --tone-color: #7ed321;
+  --tone-soft: rgba(126, 211, 33, 0.18);
+  --tone-ink: #385d05;
+}
+
+.tone-fair {
+  --tone-color: #ffd400;
+  --tone-soft: rgba(255, 212, 0, 0.20);
+  --tone-ink: #6a5200;
+}
+
+.tone-poor {
+  --tone-color: #ff8f00;
+  --tone-soft: rgba(255, 143, 0, 0.20);
+  --tone-ink: #703900;
+}
+
+.tone-danger {
+  --tone-color: #d7191c;
+  --tone-soft: rgba(215, 25, 28, 0.18);
+  --tone-ink: #771010;
+}
+
 .windy-topbar {
   position: absolute;
   top: 16px;
@@ -55,6 +122,7 @@
 .windy-detail,
 .windy-left-badges,
 .windy-layer-rail,
+.windy-color-legend,
 .windy-timeline {
   pointer-events: auto;
 }
@@ -148,8 +216,9 @@
   gap: 2px;
   padding: 10px;
   border-radius: 999px;
-  color: #061519;
-  background: rgba(255, 255, 255, 0.88);
+  color: var(--tone-ink, #061519);
+  background: color-mix(in srgb, var(--tone-color, #ffffff) 18%, rgba(255, 255, 255, 0.92));
+  border: 3px solid var(--tone-color, #ffffff);
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.22);
 }
 
@@ -189,7 +258,62 @@
 }
 
 .windy-layer-rail button.active {
-  background: #c91d1d;
+  background: var(--mode-color, #c91d1d);
+}
+
+.windy-color-legend {
+  position: absolute;
+  right: 24px;
+  bottom: 218px;
+  z-index: 5;
+  width: 210px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: #17282d;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.24);
+  backdrop-filter: blur(12px);
+}
+
+.windy-color-legend div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 7px;
+}
+
+.windy-color-legend strong {
+  font-size: 13px;
+}
+
+.windy-color-legend span {
+  color: var(--mode-color, #00c853);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.windy-color-legend i {
+  display: block;
+  height: 10px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #00c853 0%, #7ed321 26%, #ffd400 52%, #ff8f00 74%, #d7191c 100%);
+}
+
+.windy-color-legend small {
+  display: inline-block;
+  width: 33.333%;
+  margin-top: 4px;
+  color: #53686e;
+  font-size: 11px;
+}
+
+.windy-color-legend small:nth-of-type(2) {
+  text-align: center;
+}
+
+.windy-color-legend small:nth-of-type(3) {
+  text-align: right;
 }
 
 .windy-layer-rail .menu-round {
@@ -411,7 +535,17 @@
   width: 100%;
   height: 100%;
   font-style: normal;
-  background: linear-gradient(90deg, rgba(89, 225, 98, 0.85), rgba(245, 223, 78, 0.85));
+  color: var(--tone-ink, #111);
+  background: color-mix(in srgb, var(--tone-color, #7ed321) 72%, #ffffff);
+  font-weight: 800;
+}
+
+.meteo-grid .meteo-tone {
+  width: 100%;
+  height: 100%;
+  color: var(--tone-ink, #111);
+  background: color-mix(in srgb, var(--tone-color, #7ed321) 68%, #ffffff);
+  font-weight: 900;
 }
 
 .sidebar {
@@ -740,8 +874,9 @@ p {
   min-width: 70px;
   padding: 8px;
   color: #ffffff;
-  background: #0e8f8f;
+  background: var(--tone-color, #0e8f8f);
   border-radius: 8px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.38);
 }
 
 .score-pill strong {
@@ -764,8 +899,9 @@ p {
   display: grid;
   gap: 4px;
   padding: 12px;
-  background: #f4f7f3;
-  border: 1px solid #dce6df;
+  background: color-mix(in srgb, var(--tone-color, #f4f7f3) 11%, #ffffff);
+  border: 1px solid color-mix(in srgb, var(--tone-color, #dce6df) 48%, #dce6df);
+  border-left: 6px solid var(--tone-color, #dce6df);
   border-radius: 8px;
 }
 
@@ -776,7 +912,7 @@ p {
 }
 
 .stat-card strong {
-  color: #1f3035;
+  color: var(--tone-ink, #1f3035);
   font-size: 15px;
 }
 
