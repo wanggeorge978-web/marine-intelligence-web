@@ -44,6 +44,7 @@ import type {
 
 type OverlayMode = 'weather' | 'wind' | 'waves' | 'current' | 'tide' | 'sst'
 type RiskTone = 'excellent' | 'good' | 'fair' | 'poor' | 'danger'
+type WorkbenchPanel = 'forecast' | 'stations' | 'trust'
 
 const pages: Array<{ id: PageId; label: string; icon: typeof Map }> = [
   { id: 'map', label: '海况地图', icon: Map },
@@ -65,6 +66,12 @@ const overlayModes: Array<{ id: OverlayMode; label: string; unit: string; icon: 
   { id: 'current', label: '水流', unit: '节', icon: Gauge },
   { id: 'tide', label: '潮汐', unit: '米', icon: AreaChart },
   { id: 'sst', label: '水温', unit: 'C', icon: ThermometerSun },
+]
+
+const workbenchPanels: Array<{ id: WorkbenchPanel; label: string; icon: typeof Wind }> = [
+  { id: 'forecast', label: '点位预报', icon: CloudSun },
+  { id: 'stations', label: '官方站点', icon: Gauge },
+  { id: 'trust', label: '数据可信度', icon: Database },
 ]
 
 const defaultCenter: [number, number] = [-125.62, 48.89]
@@ -567,8 +574,8 @@ async function fetchCanadaCurrentStationReading(station: CanadaStation, distance
   const [observedSpeedSeries, observedDirectionSeries, predictedSpeedSeries, predictedDirectionSeries] = await Promise.all([
     hasTimeSeries(station, 'wcs1') ? fetchCanadaStationSeries(station.id, 'wcs1', -6, 1).then(nearestCanadaDataPoint).catch(() => undefined) : Promise.resolve(undefined),
     hasTimeSeries(station, 'wcd1') ? fetchCanadaStationSeries(station.id, 'wcd1', -6, 1).then(nearestCanadaDataPoint).catch(() => undefined) : Promise.resolve(undefined),
-    hasTimeSeries(station, 'wcsp1') ? fetchCanadaStationSeries(station.id, 'wcsp1', -1, 30).catch((): CanadaDataPoint[] => []) : Promise.resolve([]),
-    hasTimeSeries(station, 'wcdp1') ? fetchCanadaStationSeries(station.id, 'wcdp1', -1, 30).catch((): CanadaDataPoint[] => []) : Promise.resolve([]),
+    hasTimeSeries(station, 'wcsp1') ? fetchCanadaStationSeries(station.id, 'wcsp1', -1, 30, 'FIFTEEN_MINUTES').catch((): CanadaDataPoint[] => []) : Promise.resolve([]),
+    hasTimeSeries(station, 'wcdp1') ? fetchCanadaStationSeries(station.id, 'wcdp1', -1, 30, 'FIFTEEN_MINUTES').catch((): CanadaDataPoint[] => []) : Promise.resolve([]),
   ])
   const predictedSpeed = nearestCanadaDataPoint(predictedSpeedSeries)
   const predictedDirection = nearestCanadaDataPointAt(predictedDirectionSeries, predictedSpeed?.eventDate)
@@ -942,13 +949,29 @@ function stationPredictionAt(station: OfficialStationReading, isoTime?: string) 
   if (!series.length || !isoTime) return station.prediction
   const targetTime = new Date(isoTime).getTime()
   if (!Number.isFinite(targetTime)) return station.prediction
-  return series.reduce<typeof station.prediction>((best, point) => {
-    const pointTime = new Date(point.time).getTime()
-    const bestTime = new Date(best?.time ?? '').getTime()
-    if (!Number.isFinite(pointTime)) return best
-    if (!best || Math.abs(pointTime - targetTime) < Math.abs(bestTime - targetTime)) return point
-    return best
-  }, station.prediction)
+  const ordered = series
+    .filter((point) => Number.isFinite(new Date(point.time).getTime()) && Number.isFinite(point.value))
+    .sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
+  const previous = [...ordered].reverse().find((point) => new Date(point.time).getTime() <= targetTime)
+  const next = ordered.find((point) => new Date(point.time).getTime() >= targetTime)
+  if (previous && next && previous !== next) {
+    const previousTime = new Date(previous.time).getTime()
+    const nextTime = new Date(next.time).getTime()
+    const ratio = (targetTime - previousTime) / Math.max(1, nextTime - previousTime)
+    return {
+      value: Number(((previous.value ?? 0) + ((next.value ?? previous.value ?? 0) - (previous.value ?? 0)) * ratio).toFixed(2)),
+      directionDeg: interpolateDegrees(previous.directionDeg, next.directionDeg, ratio),
+      time: new Date(targetTime).toISOString(),
+      qcFlagCode: previous.qcFlagCode ?? next.qcFlagCode,
+    }
+  }
+  return previous ?? next ?? station.prediction
+}
+
+function interpolateDegrees(start?: number, end?: number, ratio = 0) {
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return start ?? end
+  const delta = ((((end as number) - (start as number)) % 360) + 540) % 360 - 180
+  return Math.round((((start as number) + delta * ratio) + 360) % 360)
 }
 
 function stationPredictionLabel(time?: string) {
@@ -959,6 +982,34 @@ function stationPredictionLabel(time?: string) {
     hour: '2-digit',
     minute: '2-digit',
   })
+}
+
+function stationPredictionWindow(station?: OfficialStationReading) {
+  const times = (station?.predictionSeries ?? [])
+    .map((point) => new Date(point.time).getTime())
+    .filter((time) => Number.isFinite(time))
+    .sort((a, b) => a - b)
+  if (!times.length) return undefined
+  return { startMs: times[0], endMs: times[times.length - 1] }
+}
+
+function clampMinuteOffset(offset: number, station?: OfficialStationReading) {
+  const window = stationPredictionWindow(station)
+  if (!window) return 0
+  const max = Math.max(0, Math.floor((window.endMs - window.startMs) / 60000))
+  return Math.max(0, Math.min(max, offset))
+}
+
+function stationTimeFromOffset(station?: OfficialStationReading, offset = 0) {
+  const window = stationPredictionWindow(station)
+  if (!window) return undefined
+  return new Date(window.startMs + clampMinuteOffset(offset, station) * 60000).toISOString()
+}
+
+function stationMinuteMax(station?: OfficialStationReading) {
+  const window = stationPredictionWindow(station)
+  if (!window) return 0
+  return Math.max(0, Math.floor((window.endMs - window.startMs) / 60000))
 }
 
 function canadaCurrentGeoJson(forecast: ForecastGridCell, isoTime?: string): GeoJSON.FeatureCollection<GeoJSON.Point> {
@@ -1034,6 +1085,9 @@ function MapView({
   const [isLoadingPoint, setIsLoadingPoint] = useState(false)
   const [pointError, setPointError] = useState<string | null>(null)
   const [timelineIndex, setTimelineIndex] = useState(0)
+  const [workbenchPanel, setWorkbenchPanel] = useState<WorkbenchPanel>('forecast')
+  const [selectedStationCode, setSelectedStationCode] = useState<string | null>(null)
+  const [stationMinuteOffset, setStationMinuteOffset] = useState(0)
 
   const loadPoint = useCallback(async (lng: number, lat: number) => {
     setPointError(null)
@@ -1042,6 +1096,8 @@ function MapView({
       const forecast = await fetchRealForecast(lng, lat)
       setSelected(forecast)
       setTimelineIndex(0)
+      setSelectedStationCode(null)
+      setStationMinuteOffset(0)
     } catch (reason) {
       setPointError(reason instanceof Error ? reason.message : '真实预报接口请求失败')
     } finally {
@@ -1150,6 +1206,10 @@ function MapView({
         if (!feature) return
         const coordinates = (feature.geometry as GeoJSON.Point).coordinates.slice() as [number, number]
         const props = feature.properties ?? {}
+        if (props.code) {
+          setSelectedStationCode(String(props.code))
+          setWorkbenchPanel('stations')
+        }
         new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '260px' })
           .setLngLat(coordinates)
           .setHTML(`
@@ -1184,6 +1244,11 @@ function MapView({
   const activeTimelineIndex = Math.min(timelineIndex, Math.max(0, selected.timeline.length - 1))
   const activeTimelineSlot = selected.timeline[activeTimelineIndex]
   const activeTimelineIso = activeTimelineSlot?.isoTime
+  const currentStationList = selected.canadianStations?.currentStations ?? []
+  const activeStation = currentStationList.find((station) => station.stationCode === selectedStationCode) ?? selected.canadianStations?.current ?? currentStationList[0]
+  const activeStationMinuteOffset = clampMinuteOffset(stationMinuteOffset, activeStation)
+  const stationMinuteIso = stationTimeFromOffset(activeStation, activeStationMinuteOffset)
+  const effectiveStationTimeIso = workbenchPanel === 'stations' ? stationMinuteIso ?? activeTimelineIso : activeTimelineIso
 
   useEffect(() => {
     const map = mapRef.current
@@ -1194,7 +1259,7 @@ function MapView({
     }
     const canadaSource = map.getSource('canada-current-stations') as maplibregl.GeoJSONSource | undefined
     if (canadaSource) {
-      canadaSource.setData(canadaCurrentGeoJson(selected, activeTimelineIso))
+      canadaSource.setData(canadaCurrentGeoJson(selected, effectiveStationTimeIso))
     }
     const tone = scoreTone(selected.score)
     if (map.getLayer('selected-forecast-halo')) {
@@ -1203,7 +1268,7 @@ function MapView({
     if (map.getLayer('selected-forecast-dot')) {
       map.setPaintProperty('selected-forecast-dot', 'circle-color', toneColor(tone))
     }
-  }, [selected, activeTimelineIso])
+  }, [selected, effectiveStationTimeIso])
 
   function searchLocation() {
     const parts = searchText
@@ -1217,9 +1282,20 @@ function MapView({
     }
   }
 
+  function focusStation(station: OfficialStationReading) {
+    if (station.lng === undefined || station.lat === undefined) return
+    setSelectedStationCode(station.stationCode)
+    setStationMinuteOffset(0)
+    mapRef.current?.flyTo({ center: [station.lng, station.lat], zoom: 10.5, duration: 700 })
+    setWorkbenchPanel('stations')
+  }
+
   const scoreRiskTone = scoreTone(selected.score)
   const activeTone = overlayTone(mode, selected)
   const layerLabel = overlayModes.find((item) => item.id === mode)?.label ?? '图层'
+  const canadaStationCount = selected.canadianStations?.currentStations?.length ?? 0
+  const okSourceCount = selected.apiSources?.filter((source) => source.status === 'ok').length ?? 0
+  const sourceCount = selected.apiSources?.length ?? 0
   const mapStyleVars = {
     '--score-color': toneColor(scoreRiskTone),
     '--score-soft': toneSoftColor(scoreRiskTone),
@@ -1289,7 +1365,45 @@ function MapView({
 
       <div className="windy-bottom-sheet">
         <div className="bottom-sheet-grip" aria-hidden="true" />
-        <ForecastDetail forecast={selected} stationTimeIso={activeTimelineIso} isLoading={isLoadingPoint} error={pointError} />
+        <div className="workbench-header">
+          <div>
+            <strong>海况工作台</strong>
+            <span>{stationPredictionLabel(effectiveStationTimeIso)} · {canadaStationCount} 个潮流站 · {okSourceCount}/{sourceCount} 个 API 正常</span>
+          </div>
+          <div className="workbench-tabs" role="tablist" aria-label="工作台模块">
+            {workbenchPanels.map((panel) => {
+              const Icon = panel.icon
+              return (
+                <button
+                  aria-selected={workbenchPanel === panel.id}
+                  className={workbenchPanel === panel.id ? 'active' : ''}
+                  key={panel.id}
+                  onClick={() => setWorkbenchPanel(panel.id)}
+                  role="tab"
+                >
+                  <Icon size={16} />
+                  <span>{panel.label}</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+        <ForecastDetail
+          forecast={selected}
+          panel={workbenchPanel}
+          stationTimeIso={effectiveStationTimeIso}
+          activeStation={activeStation}
+          stationMinuteOffset={activeStationMinuteOffset}
+          stationMinuteMax={stationMinuteMax(activeStation)}
+          onStationMinuteChange={setStationMinuteOffset}
+          onSelectStation={(station) => {
+            setSelectedStationCode(station.stationCode)
+            setStationMinuteOffset(0)
+          }}
+          isLoading={isLoadingPoint}
+          error={pointError}
+          onFocusStation={focusStation}
+        />
         <div className="time-scrubber">
           <div>
             <strong>预测时间</strong>
@@ -1347,16 +1461,123 @@ function qcName(code?: string) {
   return 'QC 未知'
 }
 
+function stationClockLabel(time?: string) {
+  if (!time) return '--:--'
+  return new Date(time).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+}
+
+function stationDayLabel(time?: string) {
+  if (!time) return '无日期'
+  return new Date(time).toLocaleDateString('zh-CN', { weekday: 'short', month: '2-digit', day: '2-digit' })
+}
+
+function CurrentStationDetail({
+  station,
+  stationTimeIso,
+  minuteOffset,
+  minuteMax,
+  onMinuteChange,
+}: {
+  station?: OfficialStationReading
+  stationTimeIso?: string
+  minuteOffset: number
+  minuteMax: number
+  onMinuteChange: (offset: number) => void
+}) {
+  if (!station) {
+    return <div className="current-station-empty">附近没有可用的 DFO/CHS 潮流预测站。</div>
+  }
+  const prediction = stationPredictionAt(station, stationTimeIso)
+  const series = station.predictionSeries ?? []
+  const window = stationPredictionWindow(station)
+  const maxSpeed = Math.max(1, ...series.map((point) => point.value ?? 0))
+  const width = 420
+  const height = 92
+  const points = series
+    .filter((point) => Number.isFinite(point.value) && Number.isFinite(new Date(point.time).getTime()) && window)
+    .map((point) => {
+      const time = new Date(point.time).getTime()
+      const x = window ? ((time - window.startMs) / Math.max(1, window.endMs - window.startMs)) * width : 0
+      const y = height - ((point.value ?? 0) / maxSpeed) * (height - 10) - 5
+      return `${x.toFixed(1)},${y.toFixed(1)}`
+    })
+    .join(' ')
+  const activeTime = new Date(stationTimeIso ?? '').getTime()
+  const activeX = window && Number.isFinite(activeTime) ? ((activeTime - window.startMs) / Math.max(1, window.endMs - window.startMs)) * width : 0
+  const strongest = [...series].sort((a, b) => (b.value ?? 0) - (a.value ?? 0))[0]
+  const nextStrong = series.find((point) => new Date(point.time).getTime() > activeTime && (point.value ?? 0) >= maxSpeed * 0.75)
+  return (
+    <div className="current-station-detail">
+      <div className="current-station-title">
+        <div>
+          <span>DFO/CHS 潮流预测站</span>
+          <strong>{station.stationName}</strong>
+          <small>{station.stationCode} · {Math.round(station.distanceKm)} km · 官方 15 分钟点，分钟级插值</small>
+        </div>
+        <div className="station-fav">★</div>
+      </div>
+      <div className="current-dial-row">
+        <div className="current-speed-dial">
+          <div className="dial-arrow" style={{ transform: `rotate(${prediction?.directionDeg ?? 0}deg)` }}>➤</div>
+          <strong>{prediction?.value?.toFixed(2) ?? '--'}</strong>
+          <span>kts</span>
+        </div>
+        <div className="current-curve">
+          <div className="curve-meta">
+            <span>{stationClockLabel(stationTimeIso)}</span>
+            <strong>{prediction?.directionDeg?.toFixed(0) ?? '--'}°</strong>
+            <span>{stationDayLabel(stationTimeIso)}</span>
+          </div>
+          <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="潮流速度曲线">
+            <rect width={width} height={height} rx="6" />
+            <line x1="0" x2={width} y1={height * 0.58} y2={height * 0.58} />
+            <polyline points={points} />
+            <line className="now-line" x1={activeX} x2={activeX} y1="0" y2={height} />
+          </svg>
+          <div className="curve-events">
+            <span>最强 {stationClockLabel(strongest?.time)} · {strongest?.value?.toFixed(2) ?? '--'} kt</span>
+            <span>后续强流 {stationClockLabel(nextStrong?.time)} · {nextStrong?.value?.toFixed(2) ?? '--'} kt</span>
+          </div>
+        </div>
+      </div>
+      <input
+        aria-label="分钟级潮流时间"
+        type="range"
+        min="0"
+        max={minuteMax}
+        step="1"
+        value={Math.min(minuteOffset, minuteMax)}
+        onInput={(event) => onMinuteChange(Number(event.currentTarget.value))}
+        onChange={(event) => onMinuteChange(Number(event.target.value))}
+      />
+    </div>
+  )
+}
+
 function ForecastDetail({
   forecast,
+  panel,
   stationTimeIso,
+  activeStation,
+  stationMinuteOffset,
+  stationMinuteMax,
+  onStationMinuteChange,
+  onSelectStation,
   isLoading,
   error,
+  onFocusStation,
 }: {
   forecast: ForecastGridCell
+  panel: WorkbenchPanel
   stationTimeIso?: string
+  activeStation?: OfficialStationReading
+  stationMinuteOffset: number
+  stationMinuteMax: number
+  onStationMinuteChange: (offset: number) => void
+  onSelectStation?: (station: OfficialStationReading) => void
   isLoading?: boolean
   error?: string | null
+  onFocusStation?: (station: OfficialStationReading) => void
 }) {
   const breakdown = [
     { label: '天气', value: `${forecast.weather.condition} / ${forecast.weather.airTempC} C`, note: `${pressureName(forecast.weather.pressureTrend)}，气压 ${forecast.marine.pressureHpa} hPa，降水 ${forecast.marine.precipMm} mm。` },
@@ -1380,6 +1601,7 @@ function ForecastDetail({
   const currentStationSummary = canada?.current
     ? `${canada.current.stationName} ${activeCurrentPrediction?.value?.toFixed(1) ?? canada.current.observed?.value?.toFixed(1) ?? '--'} kt`
     : '无附近潮流站'
+  const nearbyCurrentStations = canada?.currentStations ?? []
   return (
     <div className="panel detail-panel">
       <div className="detail-top">
@@ -1395,17 +1617,37 @@ function ForecastDetail({
         <StatCard icon={Gauge} label="海流" value={`${forecast.water.currentKts} 节`} detail={`${forecast.water.currentDirDeg} 度 / ${tideName(forecast.water.tide)}`} tone={currentTone(forecast.water.currentKts)} />
         <StatCard icon={ThermometerSun} label="水温" value={`${forecast.water.sstC} C`} detail={forecast.water.clarity} tone={sstTone(forecast.water.sstC)} />
       </div>
-      {canada && (
-        <details className="compact-details canada-station-panel">
-          <summary>
-            <div>
-              <strong>加拿大 DFO/CHS 官方站点</strong>
-              <span>{waterLevelSummary} · {currentStationSummary}</span>
-            </div>
-            <ChevronRight className="summary-icon" size={18} />
-          </summary>
+      {panel === 'forecast' && (
+        <div className="workbench-panel point-panel">
+          <div className="current-row">
+            <CurrentArrow degrees={forecast.water.currentDirDeg} />
+            <span>{forecast.lat.toFixed(3)}, {forecast.lng.toFixed(3)} · {forecast.weather.condition} · 气压 {forecast.marine.pressureHpa} hPa · 降水 {forecast.marine.precipMm} mm · {forecast.fish.tactic}</span>
+          </div>
+          <div className="analysis-strip">
+            {breakdown.slice(0, 4).map((item) => (
+              <div key={item.label}>
+                <strong>{item.label}</strong>
+                <span>{item.value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {panel === 'stations' && (
+        <div className="workbench-panel station-workbench">
+          <div className="station-summary">
+            <div><strong>水位 / 潮汐</strong><span>{waterLevelSummary}</span></div>
+            <div><strong>潮流站</strong><span>{currentStationSummary}</span></div>
+          </div>
+          <CurrentStationDetail
+            station={activeStation}
+            stationTimeIso={stationTimeIso}
+            minuteOffset={stationMinuteOffset}
+            minuteMax={stationMinuteMax}
+            onMinuteChange={onStationMinuteChange}
+          />
           <div className="station-grid">
-            {canada.waterLevel && (
+            {canada?.waterLevel && (
               <div className="station-card">
                 <span>水位 / 潮汐</span>
                 <strong>{canada.waterLevel.stationName}</strong>
@@ -1414,26 +1656,39 @@ function ForecastDetail({
                 <p>预测：{canada.waterLevel.prediction?.value?.toFixed(2) ?? '—'} m · {formatStationTime(canada.waterLevel.prediction?.time)} · {qcName(canada.waterLevel.prediction?.qcFlagCode)}</p>
               </div>
             )}
-            {canada.current && (
+            {canada?.current && (
               <div className="station-card">
-                <span>潮流站</span>
+                <span>最近潮流站</span>
                 <strong>{canada.current.stationName}</strong>
                 <small>{canada.current.stationCode} · {Math.round(canada.current.distanceKm)} km</small>
                 <p>观测：{canada.current.observed?.value?.toFixed(1) ?? '—'} kt · {canada.current.observed?.directionDeg?.toFixed(0) ?? '—'}° · {formatStationTime(canada.current.observed?.time)}</p>
-                <p>预测：{canada.current.prediction?.value?.toFixed(1) ?? '—'} kt · {canada.current.prediction?.directionDeg?.toFixed(0) ?? '—'}° · {formatStationTime(canada.current.prediction?.time)}</p>
+                <p>当前时间预测：{activeCurrentPrediction?.value?.toFixed(1) ?? '—'} kt · {activeCurrentPrediction?.directionDeg?.toFixed(0) ?? '—'}° · {formatStationTime(activeCurrentPrediction?.time)}</p>
               </div>
             )}
           </div>
-        </details>
-      )}
-      <details className="compact-details source-details">
-        <summary>
-          <div>
-            <strong>数据口径</strong>
-            <span>{sourceStatusText} · 模型海流和站点潮流分开显示</span>
+          <div className="station-list">
+            {nearbyCurrentStations.map((station) => {
+              const prediction = stationPredictionAt(station, stationTimeIso)
+              return (
+                <button key={station.stationCode} onClick={() => {
+                  onSelectStation?.(station)
+                  onFocusStation?.(station)
+                }}>
+                  <span>{station.stationName}</span>
+                  <strong>{prediction?.value?.toFixed(1) ?? '—'} kt</strong>
+                  <small>{prediction?.directionDeg?.toFixed(0) ?? '—'}° · {Math.round(station.distanceKm)} km · {stationPredictionLabel(prediction?.time)}</small>
+                </button>
+              )
+            })}
           </div>
-          <ChevronRight className="summary-icon" size={18} />
-        </summary>
+        </div>
+      )}
+      {panel === 'trust' && (
+        <div className="workbench-panel trust-panel">
+        <div className="trust-summary">
+          <strong>{sourceStatusText}</strong>
+          <span>免费 API 聚合结果；模型海流、站点潮流、水位潮汐按来源分开判断。</span>
+        </div>
         <div className="current-row">
           <CurrentArrow degrees={forecast.water.currentDirDeg} />
           <span>{forecast.lat.toFixed(3)}, {forecast.lng.toFixed(3)} · {forecast.weather.condition} · 气压 {forecast.marine.pressureHpa} hPa · 降水 {forecast.marine.precipMm} mm · {forecast.fish.tactic}</span>
@@ -1448,7 +1703,17 @@ function ForecastDetail({
             </span>
           ))}
         </div>
-      </details>
+        <div className="source-grid">
+          {apiSources.map((source) => (
+            <div className={`source-card source-${source.status}`} key={`${source.name}-card`}>
+              <strong>{source.name}</strong>
+              <span>{source.status}</span>
+              <p>{source.detail}</p>
+            </div>
+          ))}
+        </div>
+        </div>
+      )}
       <div className="analysis-list">
         <div className="mini-title"><Gauge size={18} /><strong>点击点详情</strong></div>
         {breakdown.map((item) => (
