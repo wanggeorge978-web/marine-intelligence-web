@@ -25,6 +25,7 @@ import {
   Trash2,
   Waves,
   Wind,
+  X,
 } from 'lucide-react'
 import './App.css'
 import { loadAppData } from './dataLoader'
@@ -1088,6 +1089,7 @@ function MapView({
   const [workbenchPanel, setWorkbenchPanel] = useState<WorkbenchPanel>('forecast')
   const [selectedStationCode, setSelectedStationCode] = useState<string | null>(null)
   const [stationMinuteOffset, setStationMinuteOffset] = useState(0)
+  const [inspectorOpen, setInspectorOpen] = useState(true)
 
   const loadPoint = useCallback(async (lng: number, lat: number) => {
     setPointError(null)
@@ -1098,6 +1100,8 @@ function MapView({
       setTimelineIndex(0)
       setSelectedStationCode(null)
       setStationMinuteOffset(0)
+      setWorkbenchPanel('forecast')
+      setInspectorOpen(true)
     } catch (reason) {
       setPointError(reason instanceof Error ? reason.message : '真实预报接口请求失败')
     } finally {
@@ -1209,6 +1213,7 @@ function MapView({
         if (props.code) {
           setSelectedStationCode(String(props.code))
           setWorkbenchPanel('stations')
+          setInspectorOpen(true)
         }
         new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '260px' })
           .setLngLat(coordinates)
@@ -1278,6 +1283,7 @@ function MapView({
     if (parts.length >= 2) {
       const [lat, lng] = Math.abs(parts[0]) <= 90 ? [parts[0], parts[1]] : [parts[1], parts[0]]
       void loadPoint(lng, lat)
+      setInspectorOpen(true)
       mapRef.current?.flyTo({ center: [lng, lat], zoom: 8.3, duration: 800 })
     }
   }
@@ -1363,8 +1369,19 @@ function MapView({
         </div>
       )}
 
-      <div className="windy-bottom-sheet">
+      {!inspectorOpen && (
+        <button className="open-inspector-button" onClick={() => setInspectorOpen(true)}>
+          <CloudSun size={18} />
+          <span>查看此点预报</span>
+        </button>
+      )}
+
+      {inspectorOpen && (
+      <div className="windy-bottom-sheet map-inspector-window">
         <div className="bottom-sheet-grip" aria-hidden="true" />
+        <button className="workbench-close" aria-label="关闭预报窗口" onClick={() => setInspectorOpen(false)}>
+          <X size={18} />
+        </button>
         <div className="workbench-header">
           <div>
             <strong>海况工作台</strong>
@@ -1440,6 +1457,7 @@ function MapView({
           {selected.timeline.map((slot, index) => <em className={`${toneClass(tideTone(slot.tideHeightM ?? 0))} ${index === activeTimelineIndex ? 'active-time' : ''}`} key={`tide-${slot.time}`}>{slot.tideHeightM}</em>)}
         </div>
       </div>
+      )}
     </section>
   )
 }
