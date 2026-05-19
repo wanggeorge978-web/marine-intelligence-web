@@ -626,6 +626,38 @@
   background: rgba(244, 249, 249, 0.9);
 }
 
+.time-scrubber {
+  display: grid;
+  grid-template-columns: minmax(170px, 260px) 1fr;
+  align-items: center;
+  gap: 14px;
+  padding: 5px 22px 7px;
+  border-top: 1px solid rgba(200, 218, 217, 0.65);
+}
+
+.time-scrubber strong,
+.time-scrubber span {
+  display: block;
+}
+
+.time-scrubber strong {
+  color: #173238;
+  font-size: 12px;
+}
+
+.time-scrubber span {
+  overflow: hidden;
+  color: #587078;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.time-scrubber input {
+  width: 100%;
+  accent-color: #0e8f8f;
+}
+
 .api-source-strip {
   display: flex;
   gap: 6px;
@@ -700,10 +732,22 @@
   font-size: 12px;
 }
 
-.meteo-grid b {
+.meteo-grid button {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #ffffff;
   color: #8a9699;
   font-size: 12px;
   font-weight: 700;
+  cursor: pointer;
+}
+
+.meteo-grid .active-time {
+  position: relative;
+  outline: 2px solid rgba(14, 143, 143, 0.78);
+  outline-offset: -2px;
+  box-shadow: inset 0 0 0 999px rgba(14, 143, 143, 0.08);
 }
 
 .meteo-grid em {
@@ -1681,6 +1725,12 @@ select {
   .windy-bottom-sheet {
     overflow-x: auto;
     max-height: 42vh;
+  }
+
+  .time-scrubber {
+    grid-template-columns: 1fr;
+    gap: 4px;
+    padding-inline: 14px;
   }
 
   .timeline-days {

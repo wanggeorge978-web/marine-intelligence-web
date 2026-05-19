@@ -54,6 +54,7 @@ export type MarinePointForecast = {
     risk: string
   }
   timeline: Array<{
+    isoTime?: string
     time: string
     bite: number
     windKts: number
@@ -89,6 +90,12 @@ export type OfficialStationReading = {
     time: string
     qcFlagCode?: string
   }
+  predictionSeries?: Array<{
+    value?: number
+    directionDeg?: number
+    time: string
+    qcFlagCode?: string
+  }>
 }
 
 export type CanadianStationData = {

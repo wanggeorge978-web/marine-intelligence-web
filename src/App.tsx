@@ -36,6 +36,7 @@ import type {
   CanadianStationData,
   ForecastGridCell,
   MarinePointForecast,
+  OfficialStationReading,
   PageId,
   UserSpot,
   WarningFeatureProperties,
@@ -486,6 +487,32 @@ function nearestCanadaDataPoint(items: CanadaDataPoint[] = []) {
   }, undefined)
 }
 
+function nearestCanadaDataPointAt(items: CanadaDataPoint[] = [], targetIso?: string) {
+  const targetTime = new Date(targetIso ?? '').getTime()
+  if (!Number.isFinite(targetTime)) return nearestCanadaDataPoint(items)
+  return items.reduce<CanadaDataPoint | undefined>((best, item) => {
+    const itemTime = new Date(item.eventDate).getTime()
+    const bestTime = new Date(best?.eventDate ?? '').getTime()
+    if (!Number.isFinite(itemTime)) return best
+    if (!best || Math.abs(itemTime - targetTime) < Math.abs(bestTime - targetTime)) return item
+    return best
+  }, undefined)
+}
+
+function combineCanadaCurrentPredictionSeries(speedSeries: CanadaDataPoint[] = [], directionSeries: CanadaDataPoint[] = []) {
+  return speedSeries
+    .filter((point) => Number.isFinite(point.value))
+    .map((speedPoint) => {
+      const directionPoint = nearestCanadaDataPointAt(directionSeries, speedPoint.eventDate)
+      return {
+        value: speedPoint.value,
+        directionDeg: directionPoint?.value,
+        time: speedPoint.eventDate,
+        qcFlagCode: speedPoint.qcFlagCode,
+      }
+    })
+}
+
 function utcIso(hoursFromNow: number) {
   return new Date(Date.now() + hoursFromNow * 60 * 60 * 1000).toISOString().replace(/\.\d{3}Z$/, 'Z')
 }
@@ -537,12 +564,17 @@ async function fetchCanadaCurrentReading(lat: number, lng: number) {
 }
 
 async function fetchCanadaCurrentStationReading(station: CanadaStation, distanceKm: number) {
-  const [observedSpeed, observedDirection, predictedSpeed, predictedDirection] = await Promise.all([
+  const [observedSpeedSeries, observedDirectionSeries, predictedSpeedSeries, predictedDirectionSeries] = await Promise.all([
     hasTimeSeries(station, 'wcs1') ? fetchCanadaStationSeries(station.id, 'wcs1', -6, 1).then(nearestCanadaDataPoint).catch(() => undefined) : Promise.resolve(undefined),
     hasTimeSeries(station, 'wcd1') ? fetchCanadaStationSeries(station.id, 'wcd1', -6, 1).then(nearestCanadaDataPoint).catch(() => undefined) : Promise.resolve(undefined),
-    hasTimeSeries(station, 'wcsp1') ? fetchCanadaStationSeries(station.id, 'wcsp1', -1, 12).then(nearestCanadaDataPoint).catch(() => undefined) : Promise.resolve(undefined),
-    hasTimeSeries(station, 'wcdp1') ? fetchCanadaStationSeries(station.id, 'wcdp1', -1, 12).then(nearestCanadaDataPoint).catch(() => undefined) : Promise.resolve(undefined),
+    hasTimeSeries(station, 'wcsp1') ? fetchCanadaStationSeries(station.id, 'wcsp1', -1, 30).catch((): CanadaDataPoint[] => []) : Promise.resolve([]),
+    hasTimeSeries(station, 'wcdp1') ? fetchCanadaStationSeries(station.id, 'wcdp1', -1, 30).catch((): CanadaDataPoint[] => []) : Promise.resolve([]),
   ])
+  const predictedSpeed = nearestCanadaDataPoint(predictedSpeedSeries)
+  const predictedDirection = nearestCanadaDataPointAt(predictedDirectionSeries, predictedSpeed?.eventDate)
+  const predictionSeries = combineCanadaCurrentPredictionSeries(predictedSpeedSeries, predictedDirectionSeries)
+  const observedSpeed = observedSpeedSeries
+  const observedDirection = observedDirectionSeries
   if (!observedSpeed && !predictedSpeed) return undefined
   return {
     stationCode: station.code,
@@ -562,6 +594,7 @@ async function fetchCanadaCurrentStationReading(station: CanadaStation, distance
       time: predictedSpeed.eventDate,
       qcFlagCode: predictedSpeed.qcFlagCode,
     } : undefined,
+    predictionSeries,
   }
 }
 
@@ -776,6 +809,7 @@ async function fetchRealForecast(lng: number, lat: number): Promise<ForecastGrid
     const tCurrent = kmhToKnots(marine.hourly?.ocean_current_velocity?.[marineHour])
     const tTide = Number((marine.hourly?.sea_level_height_msl?.[marineHour] ?? seaLevel).toFixed(2))
     return {
+      isoTime: weather.hourly?.time?.[weatherHour] ?? marine.hourly?.time?.[marineHour],
       time: (weather.hourly?.time?.[weatherHour] ?? marine.hourly?.time?.[marineHour] ?? '').slice(11, 16),
       bite: Math.max(5, Math.min(95, Math.round(score - Math.max(0, tWind - 12) * 2 - Math.max(0, tWave - 1.5) * 8))),
       windKts: tWind,
@@ -903,24 +937,53 @@ function selectedPointGeoJson(forecast: ForecastGridCell): GeoJSON.FeatureCollec
   }
 }
 
-function canadaCurrentGeoJson(forecast: ForecastGridCell): GeoJSON.FeatureCollection<GeoJSON.Point> {
+function stationPredictionAt(station: OfficialStationReading, isoTime?: string) {
+  const series = station.predictionSeries ?? []
+  if (!series.length || !isoTime) return station.prediction
+  const targetTime = new Date(isoTime).getTime()
+  if (!Number.isFinite(targetTime)) return station.prediction
+  return series.reduce<typeof station.prediction>((best, point) => {
+    const pointTime = new Date(point.time).getTime()
+    const bestTime = new Date(best?.time ?? '').getTime()
+    if (!Number.isFinite(pointTime)) return best
+    if (!best || Math.abs(pointTime - targetTime) < Math.abs(bestTime - targetTime)) return point
+    return best
+  }, station.prediction)
+}
+
+function stationPredictionLabel(time?: string) {
+  if (!time) return '无预测时间'
+  return new Date(time).toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function canadaCurrentGeoJson(forecast: ForecastGridCell, isoTime?: string): GeoJSON.FeatureCollection<GeoJSON.Point> {
   const stations = forecast.canadianStations?.currentStations ?? []
   return {
     type: 'FeatureCollection',
     features: stations
       .filter((station) => station.lat !== undefined && station.lng !== undefined && station.prediction?.value !== undefined)
-      .map((station) => ({
-        type: 'Feature',
-        properties: {
-          code: station.stationCode,
-          name: station.stationName,
-          speed: station.prediction?.value ?? 0,
-          direction: station.prediction?.directionDeg ?? 0,
-          label: `${station.prediction?.value?.toFixed(1) ?? '—'} kt`,
-          distance: Math.round(station.distanceKm),
-        },
-        geometry: { type: 'Point', coordinates: [station.lng as number, station.lat as number] },
-      })),
+      .map((station) => {
+        const prediction = stationPredictionAt(station, isoTime)
+        return {
+          type: 'Feature',
+          properties: {
+            code: station.stationCode,
+            name: station.stationName,
+            speed: prediction?.value ?? 0,
+            direction: prediction?.directionDeg ?? 0,
+            label: `${prediction?.value?.toFixed(1) ?? '—'} kt`,
+            distance: Math.round(station.distanceKm),
+            predictionTime: prediction?.time ?? '',
+            predictionTimeLabel: stationPredictionLabel(prediction?.time),
+          },
+          geometry: { type: 'Point', coordinates: [station.lng as number, station.lat as number] },
+        }
+      }),
   }
 }
 
@@ -970,6 +1033,7 @@ function MapView({
   const [searchText, setSearchText] = useState('')
   const [isLoadingPoint, setIsLoadingPoint] = useState(false)
   const [pointError, setPointError] = useState<string | null>(null)
+  const [timelineIndex, setTimelineIndex] = useState(0)
 
   const loadPoint = useCallback(async (lng: number, lat: number) => {
     setPointError(null)
@@ -977,6 +1041,7 @@ function MapView({
     try {
       const forecast = await fetchRealForecast(lng, lat)
       setSelected(forecast)
+      setTimelineIndex(0)
     } catch (reason) {
       setPointError(reason instanceof Error ? reason.message : '真实预报接口请求失败')
     } finally {
@@ -1045,7 +1110,7 @@ function MapView({
           'text-halo-width': 1,
         },
       })
-      map.addSource('canada-current-stations', { type: 'geojson', data: canadaCurrentGeoJson(initialSelected) })
+      map.addSource('canada-current-stations', { type: 'geojson', data: canadaCurrentGeoJson(initialSelected, initialSelected.timeline[0]?.isoTime) })
       map.addLayer({
         id: 'canada-current-arrows',
         type: 'symbol',
@@ -1091,6 +1156,7 @@ function MapView({
             <div class="map-popup">
               <strong>${props.name ?? '加拿大潮流站'}</strong>
               <span>${props.code ?? ''} · ${props.distance ?? '—'} km</span>
+              <p>预测时间：${props.predictionTimeLabel ?? '—'}</p>
               <p>预测流速：${Number(props.speed ?? 0).toFixed(1)} kt</p>
               <p>方向：${Math.round(Number(props.direction ?? 0))}°</p>
               <small>DFO/CHS 站点潮流预测</small>
@@ -1115,6 +1181,10 @@ function MapView({
     }
   }, [loadPoint])
 
+  const activeTimelineIndex = Math.min(timelineIndex, Math.max(0, selected.timeline.length - 1))
+  const activeTimelineSlot = selected.timeline[activeTimelineIndex]
+  const activeTimelineIso = activeTimelineSlot?.isoTime
+
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
@@ -1124,7 +1194,7 @@ function MapView({
     }
     const canadaSource = map.getSource('canada-current-stations') as maplibregl.GeoJSONSource | undefined
     if (canadaSource) {
-      canadaSource.setData(canadaCurrentGeoJson(selected))
+      canadaSource.setData(canadaCurrentGeoJson(selected, activeTimelineIso))
     }
     const tone = scoreTone(selected.score)
     if (map.getLayer('selected-forecast-halo')) {
@@ -1133,7 +1203,7 @@ function MapView({
     if (map.getLayer('selected-forecast-dot')) {
       map.setPaintProperty('selected-forecast-dot', 'circle-color', toneColor(tone))
     }
-  }, [selected])
+  }, [selected, activeTimelineIso])
 
   function searchLocation() {
     const parts = searchText
@@ -1219,25 +1289,41 @@ function MapView({
 
       <div className="windy-bottom-sheet">
         <div className="bottom-sheet-grip" aria-hidden="true" />
-        <ForecastDetail forecast={selected} isLoading={isLoadingPoint} error={pointError} />
+        <ForecastDetail forecast={selected} stationTimeIso={activeTimelineIso} isLoading={isLoadingPoint} error={pointError} />
+        <div className="time-scrubber">
+          <div>
+            <strong>预测时间</strong>
+            <span>{activeTimelineSlot?.time ?? '--:--'} · 拖动后 DFO/CHS 潮流箭头同步更新</span>
+          </div>
+          <input
+            aria-label="选择预测时间"
+            type="range"
+            min="0"
+            max={Math.max(0, selected.timeline.length - 1)}
+            step="1"
+            value={activeTimelineIndex}
+            onInput={(event) => setTimelineIndex(Number(event.currentTarget.value))}
+            onChange={(event) => setTimelineIndex(Number(event.target.value))}
+          />
+        </div>
         <div className="timeline-days">
           {['周二 19', '周三 20', '周四 21', '周五 22', '周六 23', '周日 24'].map((day) => <span key={day}>{day}</span>)}
         </div>
         <div className="meteo-grid">
           <span className="row-label">小时</span>
-          {selected.timeline.map((slot) => <b key={`t-${slot.time}`}>{slot.time}</b>)}
+          {selected.timeline.map((slot, index) => <button className={index === activeTimelineIndex ? 'active-time' : ''} key={`t-${slot.time}`} onClick={() => setTimelineIndex(index)}>{slot.time}</button>)}
           <span className="row-label">天气</span>
-          {selected.timeline.map((slot) => <span className={`meteo-tone ${toneClass(timelineTone(slot))}`} key={`w-${slot.time}`}>{slot.bite}</span>)}
+          {selected.timeline.map((slot, index) => <span className={`meteo-tone ${toneClass(timelineTone(slot))} ${index === activeTimelineIndex ? 'active-time' : ''}`} key={`w-${slot.time}`}>{slot.bite}</span>)}
           <span className="row-label">风向</span>
-          {selected.timeline.map((slot) => <span className="wind-dir-cell" key={`dir-${slot.time}`}><DirectionArrow degrees={slot.windDirDeg} label={windDirectionDetail(slot.windDirDeg)} /></span>)}
+          {selected.timeline.map((slot, index) => <span className={`wind-dir-cell ${index === activeTimelineIndex ? 'active-time' : ''}`} key={`dir-${slot.time}`}><DirectionArrow degrees={slot.windDirDeg} label={windDirectionDetail(slot.windDirDeg)} /></span>)}
           <span className="row-label">风 kt</span>
-          {selected.timeline.map((slot) => <em className={toneClass(windTone(slot.windKts))} key={`wind-${slot.time}`}>{slot.windKts}</em>)}
+          {selected.timeline.map((slot, index) => <em className={`${toneClass(windTone(slot.windKts))} ${index === activeTimelineIndex ? 'active-time' : ''}`} key={`wind-${slot.time}`}>{slot.windKts}</em>)}
           <span className="row-label">浪 m</span>
-          {selected.timeline.map((slot) => <em className={toneClass(waveTone(slot.waveM ?? 0))} key={`wave-${slot.time}`}>{formatMeters(slot.waveM)}</em>)}
+          {selected.timeline.map((slot, index) => <em className={`${toneClass(waveTone(slot.waveM ?? 0))} ${index === activeTimelineIndex ? 'active-time' : ''}`} key={`wave-${slot.time}`}>{formatMeters(slot.waveM)}</em>)}
           <span className="row-label">海流 kt</span>
-          {selected.timeline.map((slot) => <em className={toneClass(currentTone(slot.currentKts))} key={`cur-${slot.time}`}>{slot.currentKts}</em>)}
+          {selected.timeline.map((slot, index) => <em className={`${toneClass(currentTone(slot.currentKts))} ${index === activeTimelineIndex ? 'active-time' : ''}`} key={`cur-${slot.time}`}>{slot.currentKts}</em>)}
           <span className="row-label">海平面 m</span>
-          {selected.timeline.map((slot) => <em className={toneClass(tideTone(slot.tideHeightM ?? 0))} key={`tide-${slot.time}`}>{slot.tideHeightM}</em>)}
+          {selected.timeline.map((slot, index) => <em className={`${toneClass(tideTone(slot.tideHeightM ?? 0))} ${index === activeTimelineIndex ? 'active-time' : ''}`} key={`tide-${slot.time}`}>{slot.tideHeightM}</em>)}
         </div>
       </div>
     </section>
@@ -1261,7 +1347,17 @@ function qcName(code?: string) {
   return 'QC 未知'
 }
 
-function ForecastDetail({ forecast, isLoading, error }: { forecast: ForecastGridCell; isLoading?: boolean; error?: string | null }) {
+function ForecastDetail({
+  forecast,
+  stationTimeIso,
+  isLoading,
+  error,
+}: {
+  forecast: ForecastGridCell
+  stationTimeIso?: string
+  isLoading?: boolean
+  error?: string | null
+}) {
   const breakdown = [
     { label: '天气', value: `${forecast.weather.condition} / ${forecast.weather.airTempC} C`, note: `${pressureName(forecast.weather.pressureTrend)}，气压 ${forecast.marine.pressureHpa} hPa，降水 ${forecast.marine.precipMm} mm。` },
     { label: '风浪', value: `${forecast.weather.windKts} 节 / ${formatMeters(forecast.marine.waveM)} 米`, note: weatherInterpretation(forecast) },
@@ -1280,8 +1376,9 @@ function ForecastDetail({ forecast, isLoading, error }: { forecast: ForecastGrid
   const waterLevelSummary = canada?.waterLevel
     ? `${canada.waterLevel.stationName} ${canada.waterLevel.prediction?.value?.toFixed(2) ?? canada.waterLevel.observed?.value?.toFixed(2) ?? '--'} m`
     : '无附近水位站'
+  const activeCurrentPrediction = canada?.current ? stationPredictionAt(canada.current, stationTimeIso) : undefined
   const currentStationSummary = canada?.current
-    ? `${canada.current.stationName} ${canada.current.prediction?.value?.toFixed(1) ?? canada.current.observed?.value?.toFixed(1) ?? '--'} kt`
+    ? `${canada.current.stationName} ${activeCurrentPrediction?.value?.toFixed(1) ?? canada.current.observed?.value?.toFixed(1) ?? '--'} kt`
     : '无附近潮流站'
   return (
     <div className="panel detail-panel">
