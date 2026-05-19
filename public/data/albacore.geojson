@@ -5,12 +5,12 @@
       "type": "Feature",
       "properties": {
         "id": "alb-outer-tofino",
-        "name": "Outer Tofino temperature break",
+        "name": "托菲诺外海温度断层",
         "score": 84,
         "tempC": 15.8,
-        "chlorophyll": "low",
+        "chlorophyll": "低",
         "travelNm": 44,
-        "note": "Strongest demo tuna signal, but verify range and fuel."
+        "note": "样例中最强的长鳍金枪鱼信号，但航程远，必须先确认油量、天气和返程窗口。"
       },
       "geometry": { "type": "Point", "coordinates": [-126.42, 49.12] }
     },
@@ -18,12 +18,12 @@
       "type": "Feature",
       "properties": {
         "id": "alb-ucluelet-edge",
-        "name": "Ucluelet blue-green edge",
+        "name": "尤克卢利特蓝绿水边",
         "score": 71,
         "tempC": 14.2,
-        "chlorophyll": "medium",
+        "chlorophyll": "中",
         "travelNm": 31,
-        "note": "Closer scout option with mixed water."
+        "note": "更近的侦察点，适合作为第一条搜索线；若鸟况弱，快速转回三文鱼计划。"
       },
       "geometry": { "type": "Point", "coordinates": [-126.02, 48.78] }
     },
@@ -31,12 +31,12 @@
       "type": "Feature",
       "properties": {
         "id": "alb-west-lane",
-        "name": "West lane sample",
+        "name": "西侧远程搜索线",
         "score": 63,
         "tempC": 13.9,
-        "chlorophyll": "medium",
+        "chlorophyll": "中",
         "travelNm": 52,
-        "note": "Needs cleaner water confirmation."
+        "note": "距离远而水色不够干净，除非现场有强鸟况或电台情报，否则优先级较低。"
       },
       "geometry": { "type": "Point", "coordinates": [-126.72, 48.6] }
     }

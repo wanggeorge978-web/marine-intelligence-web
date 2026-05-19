@@ -1,24 +1,24 @@
 {
   "generatedAt": "2026-05-19T16:30:00Z",
-  "build": "demo-static-mvp-v1",
-  "coverage": "Vancouver Island west coast sample grid",
+  "build": "中文演示数据 v1.1",
+  "coverage": "温哥华岛西岸样例海域",
   "sources": [
     {
-      "name": "Marine forecast sample",
-      "owner": "ECCC placeholder",
-      "freshness": "Demo data, replace by GitHub Action",
+      "name": "海上天气样例",
+      "owner": "ECCC 占位",
+      "freshness": "演示数据，后续由 GitHub Actions 替换",
       "status": "demo"
     },
     {
-      "name": "PFMA rules sample",
-      "owner": "DFO placeholder",
-      "freshness": "Demo data, verify with official notices",
+      "name": "PFMA 规则样例",
+      "owner": "DFO 占位",
+      "freshness": "演示数据，法规判断必须核对官方公告",
       "status": "demo"
     },
     {
-      "name": "SST and bluewater sample",
-      "owner": "NOAA/Copernicus placeholder",
-      "freshness": "Demo data, not operational",
+      "name": "SST 与蓝水样例",
+      "owner": "NOAA / Copernicus 占位",
+      "freshness": "演示数据，不可作为实航依据",
       "status": "demo"
     }
   ]

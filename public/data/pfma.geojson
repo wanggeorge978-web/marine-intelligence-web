@@ -3,7 +3,7 @@
   "features": [
     {
       "type": "Feature",
-      "properties": { "id": "pfma-23", "name": "PFMA 23 sample" },
+      "properties": { "id": "pfma-23", "name": "PFMA 23 样例区" },
       "geometry": {
         "type": "Polygon",
         "coordinates": [[[-125.9, 48.55], [-124.95, 48.55], [-124.95, 49.05], [-125.9, 49.05], [-125.9, 48.55]]]
@@ -11,7 +11,7 @@
     },
     {
       "type": "Feature",
-      "properties": { "id": "pfma-24", "name": "PFMA 24 sample" },
+      "properties": { "id": "pfma-24", "name": "PFMA 24 样例区" },
       "geometry": {
         "type": "Polygon",
         "coordinates": [[[-126.35, 48.95], [-125.3, 48.95], [-125.3, 49.45], [-126.35, 49.45], [-126.35, 48.95]]]
@@ -19,7 +19,7 @@
     },
     {
       "type": "Feature",
-      "properties": { "id": "pfma-121", "name": "PFMA 121 sample" },
+      "properties": { "id": "pfma-121", "name": "PFMA 121 样例区" },
       "geometry": {
         "type": "Polygon",
         "coordinates": [[[-125.45, 48.3], [-124.65, 48.3], [-124.65, 48.75], [-125.45, 48.75], [-125.45, 48.3]]]

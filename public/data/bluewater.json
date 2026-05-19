@@ -1,26 +1,26 @@
 [
   {
     "id": "bw-1",
-    "zone": "Outer Tofino Break",
+    "zone": "托菲诺外海温度断层",
     "sstC": 15.8,
-    "breakStrength": "strong",
-    "color": "clean cobalt",
-    "note": "Best exploratory bluewater signal in the sample grid."
+    "breakStrength": "强",
+    "color": "干净深蓝水",
+    "note": "样例网格里最像金枪鱼搜索水的区域，水温、水色和断层强度都更积极。"
   },
   {
     "id": "bw-2",
-    "zone": "Ucluelet 35 nm edge",
+    "zone": "尤克卢利特 35 海里蓝绿边",
     "sstC": 14.2,
-    "breakStrength": "moderate",
-    "color": "blue-green",
-    "note": "Good edge, shorter run, more mixed chlorophyll."
+    "breakStrength": "中等",
+    "color": "蓝绿交界",
+    "note": "航程较短，适合试探；但叶绿素偏混，发现水色转绿就应快速换线。"
   },
   {
     "id": "bw-3",
-    "zone": "Swiftsure west lane",
+    "zone": "斯威夫舒尔西侧通道",
     "sstC": 13.1,
-    "breakStrength": "weak",
-    "color": "mixed green",
-    "note": "More salmon-oriented than tuna-oriented today."
+    "breakStrength": "弱",
+    "color": "混合绿水",
+    "note": "更偏三文鱼和底鱼逻辑，金枪鱼信号不强，不建议作为主搜索方向。"
   }
 ]

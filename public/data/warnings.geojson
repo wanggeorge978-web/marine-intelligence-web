@@ -5,10 +5,10 @@
       "type": "Feature",
       "properties": {
         "id": "warn-west-wind",
-        "type": "Marine weather",
+        "type": "海上天气",
         "severity": "advisory",
-        "title": "Afternoon west wind build",
-        "details": "Demo advisory: exposed offshore routes may become lumpy after 14:00.",
+        "title": "下午西风增强",
+        "details": "演示提醒：14:00 后外海迎风面会更碎，长航线应提前回港或改近岸计划。",
         "updatedAt": "2026-05-19T16:30:00Z"
       },
       "geometry": {
@@ -20,10 +20,10 @@
       "type": "Feature",
       "properties": {
         "id": "warn-shellfish",
-        "type": "Shellfish sanitation",
+        "type": "贝类卫生",
         "severity": "watch",
-        "title": "Shellfish status check required",
-        "details": "Demo watch: verify official contamination closures before harvesting.",
+        "title": "采捕前需核对贝类关闭区",
+        "details": "演示关注：蟹、虾、贝类相关采捕必须检查污染、红潮和临时关闭公告。",
         "updatedAt": "2026-05-19T16:30:00Z"
       },
       "geometry": {

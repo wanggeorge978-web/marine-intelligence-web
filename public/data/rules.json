@@ -2,37 +2,37 @@
   {
     "id": "rule-23-salmon",
     "area": "PFMA 23",
-    "species": "Salmon",
+    "species": "三文鱼",
     "status": "restricted",
-    "summary": "Demo rule: retention and size limits vary by sub-area. Verify official DFO notices before fishing.",
-    "source": "DFO official notices placeholder",
+    "summary": "演示规则：保留数量、尺寸和开放边界会按子区域变化。出海前必须核对 DFO 官方 notice。",
+    "source": "DFO 官方公告占位",
     "updatedAt": "2026-05-19T16:30:00Z"
   },
   {
     "id": "rule-24-crab",
     "area": "PFMA 24",
-    "species": "Crab",
+    "species": "蟹",
     "status": "open",
-    "summary": "Demo rule: traps require marked floats and shellfish contamination checks.",
-    "source": "DFO shellfish placeholder",
+    "summary": "演示规则：蟹笼需要标记浮漂；采捕前仍需检查贝类污染和区域关闭信息。",
+    "source": "DFO 贝类与蟹类规则占位",
     "updatedAt": "2026-05-19T16:30:00Z"
   },
   {
     "id": "rule-121-halibut",
     "area": "PFMA 121",
-    "species": "Halibut",
+    "species": "比目鱼",
     "status": "restricted",
-    "summary": "Demo rule: seasonal measures and possession limits require official verification.",
-    "source": "DFO halibut notice placeholder",
+    "summary": "演示规则：季节、尺寸、配额和持有限制需要单独核对，不要只看天气决定是否保留。",
+    "source": "DFO 比目鱼公告占位",
     "updatedAt": "2026-05-19T16:30:00Z"
   },
   {
     "id": "rule-bottomfish",
-    "area": "Inshore rockfish areas",
-    "species": "Rockfish/Lingcod",
+    "area": "近岸岩鱼保护区",
+    "species": "岩鱼 / 鳕类",
     "status": "closed",
-    "summary": "Demo rule: some conservation areas are closed to bottom contact gear.",
-    "source": "DFO RCA placeholder",
+    "summary": "演示规则：部分保护区禁止底接触渔具或完全关闭，地图边界必须以后续官方图层为准。",
+    "source": "DFO RCA 图层占位",
     "updatedAt": "2026-05-19T16:30:00Z"
   }
 ]

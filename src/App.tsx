@@ -43,17 +43,31 @@ const pages: Array<{
   label: string
   icon: typeof Map
 }> = [
-  { id: 'map', label: 'Map Intelligence', icon: Map },
-  { id: 'rules', label: 'Area Rules', icon: Anchor },
-  { id: 'warnings', label: 'Warning Center', icon: Bell },
-  { id: 'bluewater', label: 'Bluewater & SST', icon: Waves },
-  { id: 'albacore', label: 'Albacore Explorer', icon: Fish },
-  { id: 'spots', label: 'My Spots', icon: MapPin },
-  { id: 'route', label: 'Route Quick Check', icon: Route },
-  { id: 'trip', label: 'Trip Brief', icon: ShipWheel },
-  { id: 'settings', label: 'Settings', icon: Settings },
-  { id: 'data-status', label: 'Data Status', icon: Database },
+  { id: 'map', label: '海况地图', icon: Map },
+  { id: 'rules', label: '区域规则', icon: Anchor },
+  { id: 'warnings', label: '预警中心', icon: Bell },
+  { id: 'bluewater', label: '蓝水与水温', icon: Waves },
+  { id: 'albacore', label: '长鳍金枪鱼', icon: Fish },
+  { id: 'spots', label: '我的钓点', icon: MapPin },
+  { id: 'route', label: '航线快检', icon: Route },
+  { id: 'trip', label: '出海简报', icon: ShipWheel },
+  { id: 'settings', label: '设置', icon: Settings },
+  { id: 'data-status', label: '数据状态', icon: Database },
 ]
+
+const layerLabels: Record<keyof LayerState, string> = {
+  forecasts: '钓点评分',
+  warnings: '预警范围',
+  pfma: 'PFMA 区域',
+  albacore: '长鳍金枪鱼热区',
+}
+
+type LayerState = {
+  forecasts: boolean
+  warnings: boolean
+  pfma: boolean
+  albacore: boolean
+}
 
 const defaultCenter: [number, number] = [-125.62, 48.89]
 
@@ -76,19 +90,94 @@ function getInitialPage(): PageId {
 }
 
 function scoreLabel(score: number) {
-  if (score >= 82) return 'Prime'
-  if (score >= 70) return 'Good'
-  if (score >= 55) return 'Workable'
-  return 'Poor'
+  if (score >= 82) return '强烈推荐'
+  if (score >= 70) return '可以出钓'
+  if (score >= 55) return '勉强可钓'
+  return '不建议'
 }
 
 function formatDate(value: string) {
-  return new Intl.DateTimeFormat('en-CA', {
+  return new Intl.DateTimeFormat('zh-CN', {
     month: 'short',
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(value))
+}
+
+function windDirectionName(value: string) {
+  const map: Record<string, string> = {
+    N: '北风',
+    NE: '东北风',
+    E: '东风',
+    SE: '东南风',
+    S: '南风',
+    SW: '西南风',
+    W: '西风',
+    NW: '西北风',
+  }
+  return map[value] ?? value
+}
+
+function tideName(value: MarinePointForecast['water']['tide']) {
+  return {
+    flood: '涨潮',
+    ebb: '退潮',
+    slack: '平潮',
+  }[value]
+}
+
+function pressureName(value: MarinePointForecast['weather']['pressureTrend']) {
+  return {
+    rising: '气压上升',
+    steady: '气压稳定',
+    falling: '气压下降',
+  }[value]
+}
+
+function statusName(value: string) {
+  return {
+    open: '开放',
+    restricted: '限制',
+    closed: '关闭',
+    ok: '正常',
+    stale: '过期',
+    demo: '演示',
+    watch: '关注',
+    advisory: '提醒',
+    warning: '警告',
+  }[value] ?? value
+}
+
+function currentInterpretation(forecast: MarinePointForecast) {
+  if (forecast.water.currentKts >= 1.8) {
+    return '水流偏强，鱼会更贴结构和流边，适合找断层、礁边、潮线；底钓和抛锚要保守。'
+  }
+  if (forecast.water.currentKts <= 0.8) {
+    return '水流较缓，适合精细控线、轻铅慢拖，也适合检查蟹笼和近岸结构点。'
+  }
+  return '水流强度适中，能把饵鱼和味道带起来，是拖钓和漂流搜索比较舒服的窗口。'
+}
+
+function weatherInterpretation(forecast: MarinePointForecast) {
+  if (forecast.weather.windKts >= 14) {
+    return '风速已经接近影响舒适度的区间，下午外海会更颠，建议优先早出早回。'
+  }
+  if (forecast.weather.windKts <= 7) {
+    return '风力较轻，操船和控线压力小，适合把窗口拉长一点观察水色和鸟况。'
+  }
+  return '风力中等，仍可作业，但要盯着风向和回港角度，避免返程顶风顶浪。'
+}
+
+function scoreBreakdown(forecast: MarinePointForecast) {
+  const water = Math.round(40 - Math.abs(forecast.water.currentKts - 1.3) * 9)
+  const weather = Math.round(30 - Math.max(0, forecast.weather.windKts - 6) * 1.2)
+  const fish = Math.round(forecast.score - water - weather)
+  return [
+    { label: '水流/潮汐', value: Math.max(8, water), note: currentInterpretation(forecast) },
+    { label: '风浪/气压', value: Math.max(8, weather), note: weatherInterpretation(forecast) },
+    { label: '鱼情窗口', value: Math.max(8, fish), note: `目标鱼：${forecast.fish.target}；推荐窗口：${forecast.fish.biteWindow}` },
+  ]
 }
 
 function CurrentArrow({ degrees }: { degrees: number }) {
@@ -150,11 +239,11 @@ function Shell({ page, setPage, children }: {
         <a className="brand" href="#/map" onClick={() => setPage('map')}>
           <span className="brand-mark"><Waves size={22} /></span>
           <span>
-            <strong>Marine Intelligence</strong>
-            <small>Fishing weather and current MVP</small>
+            <strong>海钓智能助手</strong>
+            <small>天气 水流 鱼情 规则</small>
           </span>
         </a>
-        <nav className="nav-list" aria-label="Main">
+        <nav className="nav-list" aria-label="主导航">
           {pages.map((item) => {
             const Icon = item.icon
             return (
@@ -172,7 +261,7 @@ function Shell({ page, setPage, children }: {
         </nav>
         <div className="source-note">
           <AlertTriangle size={16} />
-          <span>Demo intelligence only. Not for navigation. Verify official sources before departure.</span>
+          <span>当前为演示数据，不可用于航海导航或法规判断。出海前必须核对官方天气、海况和 DFO 规则。</span>
         </div>
       </aside>
       <main className="main">{children}</main>
@@ -191,7 +280,7 @@ function MapView({
 }) {
   const mapNode = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
-  const [layers, setLayers] = useState({
+  const [layers, setLayers] = useState<LayerState>({
     forecasts: true,
     warnings: true,
     pfma: true,
@@ -347,10 +436,10 @@ function MapView({
       <div className="panel map-panel">
         <div className="panel-header">
           <div>
-            <p className="eyebrow">Live-style static intelligence</p>
-            <h1>Map Intelligence</h1>
+            <p className="eyebrow">地图情报层</p>
+            <h1>海况地图</h1>
           </div>
-          <button className="icon-button" title="Recenter map" onClick={() => mapRef.current?.flyTo({ center: defaultCenter, zoom: 7.5 })}>
+          <button className="icon-button" title="回到默认海域" onClick={() => mapRef.current?.flyTo({ center: defaultCenter, zoom: 7.5 })}>
             <LocateFixed size={18} />
           </button>
         </div>
@@ -363,11 +452,11 @@ function MapView({
         <div className="panel compact">
           <div className="mini-title">
             <Layers size={18} />
-            <strong>Layers</strong>
+            <strong>图层</strong>
           </div>
           {Object.entries(layers).map(([key, value]) => (
             <label className="switch-row" key={key}>
-              <span>{key}</span>
+              <span>{layerLabels[key as keyof LayerState]}</span>
               <input
                 type="checkbox"
                 checked={value}
@@ -384,6 +473,7 @@ function MapView({
 }
 
 function PointDetail({ forecast }: { forecast: MarinePointForecast }) {
+  const breakdown = scoreBreakdown(forecast)
   return (
     <div className="panel detail-panel">
       <div className="detail-top">
@@ -398,15 +488,18 @@ function PointDetail({ forecast }: { forecast: MarinePointForecast }) {
       </div>
 
       <div className="stats-grid">
-        <StatCard icon={Wind} label="Wind" value={`${forecast.weather.windKts} kt`} detail={forecast.weather.windDir} />
-        <StatCard icon={Waves} label="Current" value={`${forecast.water.currentKts} kt`} detail={forecast.water.tide} />
-        <StatCard icon={ThermometerSun} label="SST" value={`${forecast.water.sstC} C`} detail={forecast.water.clarity} />
-        <StatCard icon={CloudSun} label="Weather" value={forecast.weather.condition} detail={forecast.weather.pressureTrend} />
+        <StatCard icon={Wind} label="风" value={`${forecast.weather.windKts} 节`} detail={windDirectionName(forecast.weather.windDir)} />
+        <StatCard icon={Waves} label="流" value={`${forecast.water.currentKts} 节`} detail={tideName(forecast.water.tide)} />
+        <StatCard icon={ThermometerSun} label="水温" value={`${forecast.water.sstC} C`} detail={forecast.water.clarity} />
+        <StatCard icon={CloudSun} label="天气" value={forecast.weather.condition} detail={pressureName(forecast.weather.pressureTrend)} />
       </div>
 
       <div className="current-row">
         <CurrentArrow degrees={forecast.water.currentDirDeg} />
-        <span>Current set {forecast.water.currentDirDeg} deg, swell {forecast.water.swellM} m at {forecast.water.swellPeriodS}s.</span>
+        <span>
+          水流方向 {forecast.water.currentDirDeg} 度，浪高 {forecast.water.swellM} 米，周期 {forecast.water.swellPeriodS} 秒。
+          {currentInterpretation(forecast)}
+        </span>
       </div>
 
       <div className="callout">
@@ -414,19 +507,37 @@ function PointDetail({ forecast }: { forecast: MarinePointForecast }) {
         <div>
           <strong>{forecast.fish.target}</strong>
           <span>{forecast.fish.tactic}</span>
+          <span>风险：{forecast.fish.risk}</span>
         </div>
+      </div>
+
+      <div className="analysis-list">
+        <div className="mini-title">
+          <Gauge size={18} />
+          <strong>评分拆解</strong>
+        </div>
+        {breakdown.map((item) => (
+          <div className="analysis-row" key={item.label}>
+            <div>
+              <strong>{item.label}</strong>
+              <p>{item.note}</p>
+            </div>
+            <span>{item.value}</span>
+          </div>
+        ))}
       </div>
 
       <div className="timeline">
         <div className="mini-title">
           <AreaChart size={18} />
-          <strong>Bite window timeline</strong>
+          <strong>咬口时间线</strong>
         </div>
         {forecast.timeline.map((slot) => (
           <div className="timeline-row" key={slot.time}>
             <span>{slot.time}</span>
             <meter min="0" max="100" value={slot.bite} />
             <strong>{slot.bite}</strong>
+            <small>{slot.windKts} 节风 / {slot.currentKts} 节流</small>
           </div>
         ))}
       </div>
@@ -447,13 +558,13 @@ function Dashboard({
     <div className="dashboard">
       <section className="hero-band">
         <div>
-          <p className="eyebrow">Static MVP build</p>
-          <h1>Fishing weather, current, rules, and offshore signals in one fast page.</h1>
+          <p className="eyebrow">网页版第一阶段</p>
+          <h1>把天气、风浪、水流、潮汐、鱼情和法规检查放到一张中文海钓工作台里。</h1>
         </div>
         <div className="hero-metrics">
-          <div><strong>{data.forecasts.length}</strong><span>forecast points</span></div>
-          <div><strong>{data.rules.length}</strong><span>rule records</span></div>
-          <div><strong>{data.warnings.features.length}</strong><span>warnings</span></div>
+          <div><strong>{data.forecasts.length}</strong><span>海况点</span></div>
+          <div><strong>{data.rules.length}</strong><span>规则记录</span></div>
+          <div><strong>{data.warnings.features.length}</strong><span>预警图层</span></div>
         </div>
       </section>
 
@@ -464,16 +575,16 @@ function Dashboard({
 
 function RulesPage({ data }: { data: AppData }) {
   return (
-    <PageScaffold title="Area Rules" eyebrow="PFMA and species checks" icon={Anchor}>
+    <PageScaffold title="区域规则" eyebrow="PFMA 与鱼种限制检查" icon={Anchor}>
       <div className="table-panel panel">
         <div className="table-grid table-head">
-          <span>Area</span><span>Species</span><span>Status</span><span>Summary</span>
+          <span>区域</span><span>鱼种</span><span>状态</span><span>摘要</span>
         </div>
         {data.rules.map((rule) => (
           <div className="table-grid" key={rule.id}>
             <strong>{rule.area}</strong>
             <span>{rule.species}</span>
-            <span className={`status ${rule.status}`}>{rule.status}</span>
+            <span className={`status ${rule.status}`}>{statusName(rule.status)}</span>
             <span>{rule.summary}</span>
           </div>
         ))}
@@ -484,16 +595,16 @@ function RulesPage({ data }: { data: AppData }) {
 
 function WarningsPage({ data }: { data: AppData }) {
   return (
-    <PageScaffold title="Warning Center" eyebrow="Weather, shellfish, and route risk" icon={Bell}>
+    <PageScaffold title="预警中心" eyebrow="天气、贝类污染与航线风险" icon={Bell}>
       <div className="card-list">
         {data.warnings.features.map((feature) => {
           const props = feature.properties as WarningFeatureProperties
           return (
             <article className="panel warning-card" key={props.id}>
-              <div className={`severity ${props.severity}`}><AlertTriangle size={18} />{props.severity}</div>
+              <div className={`severity ${props.severity}`}><AlertTriangle size={18} />{statusName(props.severity)}</div>
               <h2>{props.title}</h2>
               <p>{props.details}</p>
-              <small>Updated {formatDate(props.updatedAt)}</small>
+              <small>更新时间 {formatDate(props.updatedAt)}</small>
             </article>
           )
         })}
@@ -504,7 +615,7 @@ function WarningsPage({ data }: { data: AppData }) {
 
 function BluewaterPage({ data }: { data: AppData }) {
   return (
-    <PageScaffold title="Bluewater & SST" eyebrow="Temperature breaks and water color" icon={Waves}>
+    <PageScaffold title="蓝水与水温" eyebrow="温度断层、水色与外海信号" icon={Waves}>
       <div className="bluewater-grid">
         {data.bluewater.map((cell) => (
           <article className="panel water-card" key={cell.id}>
@@ -514,7 +625,7 @@ function BluewaterPage({ data }: { data: AppData }) {
               <p>{cell.note}</p>
               <div className="tag-row">
                 <span>{cell.sstC} C</span>
-                <span>{cell.breakStrength} break</span>
+                <span>{cell.breakStrength} 断层</span>
                 <span>{cell.color}</span>
               </div>
             </div>
@@ -530,7 +641,7 @@ function AlbacorePage({ data }: { data: AppData }) {
     (a, b) => (b.properties as AlbacoreFeatureProperties).score - (a.properties as AlbacoreFeatureProperties).score,
   )
   return (
-    <PageScaffold title="Albacore Explorer" eyebrow="Offshore tuna score" icon={Fish}>
+    <PageScaffold title="长鳍金枪鱼" eyebrow="外海金枪鱼搜索评分" icon={Fish}>
       <div className="card-list">
         {ranked.map((feature, index) => {
           const props = feature.properties as AlbacoreFeatureProperties
@@ -541,10 +652,10 @@ function AlbacorePage({ data }: { data: AppData }) {
                 <h2>{props.name}</h2>
                 <p>{props.note}</p>
                 <div className="tag-row">
-                  <span>Score {props.score}</span>
+                  <span>评分 {props.score}</span>
                   <span>{props.tempC} C</span>
-                  <span>{props.travelNm} nm</span>
-                  <span>Chl {props.chlorophyll}</span>
+                  <span>{props.travelNm} 海里</span>
+                  <span>叶绿素 {props.chlorophyll}</span>
                 </div>
               </div>
             </article>
@@ -576,7 +687,7 @@ function SpotsPage({
         lat: selected.lat,
         lng: selected.lng,
         target: selected.fish.target,
-        notes: `Saved from ${selected.name}`,
+        notes: `从 ${selected.name} 保存`,
         createdAt: new Date().toISOString(),
       },
       ...spots,
@@ -585,14 +696,14 @@ function SpotsPage({
   }
 
   return (
-    <PageScaffold title="My Spots" eyebrow="LocalStorage plus IndexedDB" icon={MapPin}>
+    <PageScaffold title="我的钓点" eyebrow="本地保存：localStorage + IndexedDB" icon={MapPin}>
       <div className="panel form-panel">
         <div>
-          <h2>Save current point</h2>
-          <p>{selected.name} at {selected.lat.toFixed(2)}, {selected.lng.toFixed(2)}</p>
+          <h2>保存当前选中的钓点</h2>
+          <p>{selected.name}，坐标 {selected.lat.toFixed(2)}, {selected.lng.toFixed(2)}</p>
         </div>
-        <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Spot name" />
-        <button className="primary-button" onClick={addSpot}><Plus size={18} />Add spot</button>
+        <input value={name} onChange={(event) => setName(event.target.value)} placeholder="输入钓点名称" />
+        <button className="primary-button" onClick={addSpot}><Plus size={18} />添加钓点</button>
       </div>
 
       <div className="card-list">
@@ -601,12 +712,12 @@ function SpotsPage({
             <MapPin size={18} />
             <div>
               <h2>{spot.name}</h2>
-              <p>{spot.notes}; target {spot.target}</p>
+              <p>{spot.notes}；目标鱼 {spot.target}</p>
               <small>{spot.lat.toFixed(3)}, {spot.lng.toFixed(3)}</small>
             </div>
             <button
               className="icon-button"
-              title="Delete spot"
+              title="删除钓点"
               onClick={() => setSpots(spots.filter((item) => item.id !== spot.id))}
             >
               <Trash2 size={17} />
@@ -628,17 +739,17 @@ function RoutePage({ data }: { data: AppData }) {
   const routeScore = Math.max(24, Math.round((start.score + end.score) / 2 - avgWind * 1.1))
 
   return (
-    <PageScaffold title="Route Quick Check" eyebrow="Simple MVP route risk" icon={Route}>
+    <PageScaffold title="航线快检" eyebrow="按起点终点估算风浪水流风险" icon={Route}>
       <div className="panel route-panel">
         <label>
-          From
+          起点
           <select value={from} onChange={(event) => setFrom(event.target.value)}>
             {data.forecasts.map((forecast) => <option key={forecast.id} value={forecast.id}>{forecast.name}</option>)}
           </select>
         </label>
         <ChevronRight size={20} />
         <label>
-          To
+          终点
           <select value={to} onChange={(event) => setTo(event.target.value)}>
             {data.forecasts.map((forecast) => <option key={forecast.id} value={forecast.id}>{forecast.name}</option>)}
           </select>
@@ -647,9 +758,14 @@ function RoutePage({ data }: { data: AppData }) {
       <div className="panel score-panel">
         <Gauge size={26} />
         <div>
-          <p className="eyebrow">Route score</p>
+          <p className="eyebrow">航线评分</p>
           <h2>{routeScore} / 100</h2>
-          <p>Average wind {avgWind} kt, current {avgCurrent} kt. Best departure bias: morning before wind build.</p>
+          <p>平均风速 {avgWind} 节，平均水流 {avgCurrent} 节。建议优先上午出发，下午风浪建立前回港。</p>
+          <div className="route-result-grid">
+            <span>操船压力：{avgWind >= 13 ? '偏高' : '可控'}</span>
+            <span>控线难度：{Number(avgCurrent) >= 1.8 ? '较难' : '中等'}</span>
+            <span>回程提醒：预留逆风逆流时间</span>
+          </div>
         </div>
       </div>
     </PageScaffold>
@@ -658,27 +774,31 @@ function RoutePage({ data }: { data: AppData }) {
 
 function TripPage({ selected, warnings }: { selected: MarinePointForecast; warnings: AppData['warnings'] }) {
   return (
-    <PageScaffold title="Trip Brief" eyebrow="One-screen go/no-go summary" icon={ShipWheel}>
+    <PageScaffold title="出海简报" eyebrow="一屏完成出发前 go / no-go 判断" icon={ShipWheel}>
       <div className="brief-grid">
         <div className="panel brief-main">
-          <p className="eyebrow">Selected point</p>
+          <p className="eyebrow">当前钓点</p>
           <h2>{selected.name}</h2>
           <p>{selected.fish.tactic}</p>
           <div className="tag-row">
             <span>{selected.fish.biteWindow}</span>
-            <span>{selected.weather.windKts} kt {selected.weather.windDir}</span>
-            <span>{selected.water.swellM} m swell</span>
+            <span>{selected.weather.windKts} 节 {windDirectionName(selected.weather.windDir)}</span>
+            <span>{selected.water.swellM} 米浪</span>
+          </div>
+          <div className="brief-section">
+            <strong>今天的关键判断</strong>
+            <p>{weatherInterpretation(selected)} {currentInterpretation(selected)}</p>
           </div>
         </div>
         <div className="panel checklist">
-          <h2>Pre-departure checks</h2>
-          {['Official rules', 'Marine forecast', 'Fuel range', 'VHF and safety kit', 'Float plan'].map((item) => (
+          <h2>出发前检查</h2>
+          {['官方法规已核对', '海上天气已核对', '油量和返程余量', 'VHF 与救生装备', '已告知岸上联系人'].map((item) => (
             <label key={item}><input type="checkbox" />{item}</label>
           ))}
         </div>
         <div className="panel">
-          <h2>Warnings</h2>
-          <p>{warnings.features.length} demo warning layers intersect the sample operating region.</p>
+          <h2>预警</h2>
+          <p>当前样例海域内有 {warnings.features.length} 个预警图层。真实出海前必须以官方发布为准。</p>
         </div>
       </div>
     </PageScaffold>
@@ -687,9 +807,9 @@ function TripPage({ selected, warnings }: { selected: MarinePointForecast; warni
 
 function SettingsPage() {
   return (
-    <PageScaffold title="Settings" eyebrow="Units and display" icon={Settings}>
+    <PageScaffold title="设置" eyebrow="单位、显示与离线能力" icon={Settings}>
       <div className="settings-grid">
-        {['Knots', 'Celsius', 'Nautical miles', 'Hash routing', 'Offline spots'].map((item) => (
+        {['风速使用节', '温度使用摄氏度', '距离使用海里', 'Hash 路由适配 GitHub Pages', '离线保存钓点'].map((item) => (
           <div className="panel setting-row" key={item}>
             <span>{item}</span>
             <input type="checkbox" defaultChecked />
@@ -702,21 +822,21 @@ function SettingsPage() {
 
 function DataStatusPage({ data }: { data: AppData }) {
   return (
-    <PageScaffold title="Data Status" eyebrow="Static JSON build manifest" icon={Database}>
+    <PageScaffold title="数据状态" eyebrow="静态 JSON 构建清单" icon={Database}>
       <div className="panel data-panel">
         <div className="data-build">
           <CheckCircle2 size={24} />
           <div>
             <h2>{data.manifest.build}</h2>
             <p>{data.manifest.coverage}</p>
-            <small>Generated {formatDate(data.manifest.generatedAt)}</small>
+            <small>生成时间 {formatDate(data.manifest.generatedAt)}</small>
           </div>
         </div>
         {data.manifest.sources.map((source) => (
           <div className="source-row" key={source.name}>
             <strong>{source.name}</strong>
             <span>{source.owner}</span>
-            <span className={`status ${source.status}`}>{source.status}</span>
+            <span className={`status ${source.status}`}>{statusName(source.status)}</span>
             <small>{source.freshness}</small>
           </div>
         ))}
@@ -784,7 +904,7 @@ function App() {
     return (
       <div className="loading-state">
         <AlertTriangle size={28} />
-        <h1>Data load failed</h1>
+        <h1>数据加载失败</h1>
         <p>{error}</p>
       </div>
     )
@@ -794,7 +914,7 @@ function App() {
     return (
       <div className="loading-state">
         <RefreshCcw size={28} className="spin" />
-        <h1>Loading marine intelligence</h1>
+        <h1>正在加载海钓情报</h1>
       </div>
     )
   }

@@ -1,14 +1,14 @@
 [
   {
     "id": "ucluelet-bank",
-    "name": "Ucluelet Bank",
+    "name": "尤克卢利特外海浅滩",
     "lat": 48.83,
     "lng": -125.55,
-    "area": "PFMA 23 Offshore Edge",
+    "area": "PFMA 23 外海流边",
     "updatedAt": "2026-05-19T16:30:00Z",
     "score": 87,
     "weather": {
-      "condition": "Broken cloud",
+      "condition": "多云间晴",
       "airTempC": 14,
       "windKts": 9,
       "windDir": "NW",
@@ -21,13 +21,13 @@
       "swellPeriodS": 11,
       "tide": "flood",
       "sstC": 12.8,
-      "clarity": "green-blue edge"
+      "clarity": "蓝绿交界"
     },
     "fish": {
-      "target": "Chinook, Coho",
-      "biteWindow": "06:10-09:20, 16:45-18:30",
-      "tactic": "Work the current edge; troll 2.4-2.8 kt with bait near 70-110 ft.",
-      "risk": "Moderate traffic and afternoon chop."
+      "target": "奇努克三文鱼、银鲑",
+      "biteWindow": "06:10-09:20，16:45-18:30",
+      "tactic": "主攻潮线和水色边界，拖钓速度 2.4-2.8 节，饵层控制在 70-110 英尺；先沿等深线搜索，再回头压咬口点。",
+      "risk": "中午后船流量增加，下午外海短浪会变碎，返航不要拖太晚。"
     },
     "timeline": [
       { "time": "06:00", "bite": 82, "windKts": 5, "currentKts": 1.0 },
@@ -39,14 +39,14 @@
   },
   {
     "id": "tofino-shelf",
-    "name": "Tofino Shelf Break",
+    "name": "托菲诺大陆架断层",
     "lat": 49.09,
     "lng": -126.02,
-    "area": "PFMA 24 Outer Shelf",
+    "area": "PFMA 24 外海陆架",
     "updatedAt": "2026-05-19T16:30:00Z",
     "score": 78,
     "weather": {
-      "condition": "High overcast",
+      "condition": "高云",
       "airTempC": 13,
       "windKts": 12,
       "windDir": "W",
@@ -59,13 +59,13 @@
       "swellPeriodS": 12,
       "tide": "ebb",
       "sstC": 13.6,
-      "clarity": "clear blue"
+      "clarity": "干净蓝水"
     },
     "fish": {
-      "target": "Albacore probe, Coho",
+      "target": "长鳍金枪鱼探点、银鲑",
       "biteWindow": "08:20-11:15",
-      "tactic": "Run temperature break lines; watch bird activity and clean water.",
-      "risk": "Distance and west wind exposure."
+      "tactic": "沿水温断层跑 Z 字线，重点看鸟、漂浮物和水色突变；如果水色发绿，不要恋战。",
+      "risk": "航程较远，西风暴露明显，必须预留油量和返程时间。"
     },
     "timeline": [
       { "time": "06:00", "bite": 55, "windKts": 8, "currentKts": 1.2 },
@@ -77,14 +77,14 @@
   },
   {
     "id": "barkley-sound",
-    "name": "Barkley Sound Channels",
+    "name": "巴克利湾内水道",
     "lat": 48.93,
     "lng": -125.24,
-    "area": "PFMA 23 Inshore",
+    "area": "PFMA 23 近岸内湾",
     "updatedAt": "2026-05-19T16:30:00Z",
     "score": 69,
     "weather": {
-      "condition": "Light rain",
+      "condition": "小雨",
       "airTempC": 12,
       "windKts": 6,
       "windDir": "SE",
@@ -97,13 +97,13 @@
       "swellPeriodS": 7,
       "tide": "slack",
       "sstC": 11.9,
-      "clarity": "tea stain"
+      "clarity": "茶色混水"
     },
     "fish": {
-      "target": "Lingcod, Crab",
+      "target": "鳕类、蟹",
       "biteWindow": "10:30-13:20",
-      "tactic": "Hold near structure on slack; set traps outside heavy eelgrass.",
-      "risk": "Rule check required before keeping bottomfish."
+      "tactic": "平潮窗口贴结构慢搜，蟹笼避开重海草区；底钓前先确认保护区边界。",
+      "risk": "保留底鱼前必须查规则；雨后近岸浑水会影响视觉找点。"
     },
     "timeline": [
       { "time": "06:00", "bite": 44, "windKts": 4, "currentKts": 0.5 },
@@ -115,14 +115,14 @@
   },
   {
     "id": "swiftsure",
-    "name": "Swiftsure Bank",
+    "name": "斯威夫舒尔浅滩",
     "lat": 48.55,
     "lng": -125.02,
-    "area": "PFMA 121 Sample",
+    "area": "PFMA 121 样例外海区",
     "updatedAt": "2026-05-19T16:30:00Z",
     "score": 74,
     "weather": {
-      "condition": "Clear",
+      "condition": "晴",
       "airTempC": 15,
       "windKts": 11,
       "windDir": "NW",
@@ -135,13 +135,13 @@
       "swellPeriodS": 10,
       "tide": "flood",
       "sstC": 12.4,
-      "clarity": "mixed"
+      "clarity": "混合水色"
     },
     "fish": {
-      "target": "Halibut, Chinook",
-      "biteWindow": "07:00-08:45, 14:50-16:10",
-      "tactic": "Anchor only in settled windows; drift baits on manageable current.",
-      "risk": "Strong current, verify halibut notices."
+      "target": "比目鱼、奇努克三文鱼",
+      "biteWindow": "07:00-08:45，14:50-16:10",
+      "tactic": "水流强时先漂钓找底形，等流速回落再考虑抛锚；拖钓线要避开强横流。",
+      "risk": "水流偏强，抛锚和起锚压力高；比目鱼规则必须单独核对。"
     },
     "timeline": [
       { "time": "06:00", "bite": 69, "windKts": 7, "currentKts": 1.7 },
