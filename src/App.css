@@ -416,13 +416,14 @@
 
 .map-inspector-window {
   position: absolute;
-  left: clamp(14px, calc(var(--popup-x, 28px) + 18px), calc(100vw - 750px));
+  left: clamp(14px, calc(var(--popup-x, 28px) + 18px), calc(100vw - 650px));
   right: auto;
-  top: clamp(76px, calc(var(--popup-y, 92px) - 28px), calc(100vh - 620px));
+  top: clamp(76px, calc(var(--popup-y, 92px) - 28px), calc(100vh - 560px));
   bottom: auto;
-  width: min(720px, calc(100vw - 142px));
-  max-height: min(620px, calc(100vh - 92px));
+  width: min(620px, calc(100vw - 142px));
+  max-height: min(560px, calc(100vh - 92px));
   overflow: auto;
+  resize: both;
   border: 1px solid rgba(190, 211, 211, 0.95);
   border-top: 4px solid rgba(20, 121, 132, 0.95);
   border-radius: 8px;
@@ -449,7 +450,7 @@
   border-radius: 0;
   box-shadow: none;
   background: transparent;
-  padding: 2px 22px 6px;
+  padding: 2px 14px 5px;
 }
 
 .forecast-popup .detail-top {
@@ -458,7 +459,7 @@
 
 .forecast-popup .detail-top h2 {
   margin: 0;
-  font-size: 18px;
+  font-size: 16px;
   line-height: 1.15;
 }
 
@@ -467,26 +468,26 @@
 }
 
 .forecast-popup .score-pill {
-  min-width: 58px;
-  padding: 6px 8px;
+  min-width: 52px;
+  padding: 5px 7px;
 }
 
 .forecast-popup .score-pill strong {
-  font-size: 24px;
+  font-size: 22px;
 }
 
 .forecast-popup .stats-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-  margin: 5px 0;
+  gap: 6px;
+  margin: 4px 0;
 }
 
 .forecast-popup .stat-card {
-  min-height: 48px;
+  min-height: 44px;
   grid-template-columns: auto 1fr;
   align-items: center;
   column-gap: 8px;
-  padding: 6px 10px;
+  padding: 5px 8px;
 }
 
 .forecast-popup .stat-card svg {
@@ -494,7 +495,7 @@
 }
 
 .forecast-popup .stat-card strong {
-  font-size: 15px;
+  font-size: 14px;
 }
 
 .forecast-popup .stat-card span,
@@ -578,8 +579,17 @@
   grid-template-columns: minmax(220px, 1fr) auto;
   align-items: center;
   gap: 14px;
-  padding: 2px 52px 6px 22px;
+  padding: 2px 48px 5px 14px;
   border-bottom: 1px solid rgba(200, 218, 217, 0.7);
+}
+
+.draggable-header {
+  cursor: grab;
+  user-select: none;
+}
+
+.draggable-header:active {
+  cursor: grabbing;
 }
 
 .workbench-header strong,
@@ -609,11 +619,11 @@
 }
 
 .workbench-tabs button {
-  height: 30px;
+  height: 28px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 0 10px;
+  padding: 0 8px;
   border: 0;
   border-radius: 7px;
   color: #435a61;
@@ -688,8 +698,8 @@
 
 .workbench-panel {
   display: grid;
-  gap: 7px;
-  margin-top: 6px;
+  gap: 6px;
+  margin-top: 5px;
 }
 
 .point-panel .current-row,
@@ -700,13 +710,13 @@
 .analysis-strip {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
+  gap: 6px;
 }
 
 .analysis-strip div,
 .station-summary div {
   min-width: 0;
-  padding: 7px 9px;
+  padding: 6px 8px;
   border-radius: 8px;
   color: #173238;
   background: rgba(244, 249, 249, 0.92);
@@ -1143,7 +1153,7 @@
   grid-template-columns: minmax(170px, 260px) 1fr;
   align-items: center;
   gap: 14px;
-  padding: 5px 22px 7px;
+  padding: 5px 14px 7px;
   border-top: 1px solid rgba(200, 218, 217, 0.65);
 }
 
@@ -1172,16 +1182,19 @@
 
 .popup-hour-strip {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 7px;
-  padding: 6px 22px 12px;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(86px, 96px);
+  gap: 6px;
+  padding: 5px 14px 10px;
+  overflow-x: auto;
+  scrollbar-width: thin;
 }
 
 .popup-hour-strip button {
   min-width: 0;
   display: grid;
   gap: 2px;
-  padding: 6px 7px;
+  padding: 5px 7px;
   border: 1px solid #d4e1df;
   border-radius: 8px;
   color: #173238;

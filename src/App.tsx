@@ -268,6 +268,28 @@ function kmhToKnots(value?: number) {
   return Number(((value ?? 0) * 0.539957).toFixed(1))
 }
 
+function interpolateSeries(values: Array<number | null | undefined> | undefined, index: number, fallback = 0) {
+  if (!values?.length) return fallback
+  const lowerIndex = Math.max(0, Math.min(values.length - 1, Math.floor(index)))
+  const upperIndex = Math.max(0, Math.min(values.length - 1, Math.ceil(index)))
+  const ratio = index - Math.floor(index)
+  const lower = Number(values[lowerIndex] ?? fallback)
+  const upper = Number(values[upperIndex] ?? lower)
+  if (!Number.isFinite(lower) || !Number.isFinite(upper)) return fallback
+  return lower + (upper - lower) * ratio
+}
+
+function addMinutesToIsoLike(value: string | undefined, minutes: number) {
+  if (!value) return ''
+  const [datePart, timePart = '00:00'] = value.split('T')
+  const [year, month, day] = datePart.split('-').map(Number)
+  const [hour, minute] = timePart.split(':').map(Number)
+  const date = new Date(year, (month ?? 1) - 1, day ?? 1, hour ?? 0, minute ?? 0)
+  date.setMinutes(date.getMinutes() + minutes)
+  const pad = (item: number) => String(item).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
 function pickMarineHeight(...values: Array<number | undefined>) {
   const candidates = values.filter((value): value is number => value !== undefined && Number.isFinite(value) && value >= 0)
   if (!candidates.length) return 0
@@ -801,26 +823,50 @@ async function fetchRealForecast(lng: number, lat: number): Promise<ForecastGrid
   const currentDirDeg = Math.round(marine.current?.ocean_current_direction ?? 0)
   const windDirDeg = Math.round(weather.current?.wind_direction_10m ?? weather.hourly?.wind_direction_10m?.[weatherIndex] ?? 0)
   const score = Math.max(20, Math.min(95, Math.round(92 - Math.max(0, windKts - 10) * 2.2 - Math.max(0, waveM - 1.2) * 10 - Math.max(0, currentKts - 1.8) * 8)))
-  const timeline = Array.from({ length: 8 }, (_, itemIndex) => {
-    const weatherHour = weatherIndex + itemIndex * 3
-    const marineHour = marineIndex + itemIndex * 3
-    const tWind = Number((weather.hourly?.wind_speed_10m?.[weatherHour] ?? windKts).toFixed(1))
+  const timeline = Array.from({ length: 48 }, (_, itemIndex) => {
+    const hourOffset = itemIndex / 2
+    const weatherHour = weatherIndex + hourOffset
+    const marineHour = marineIndex + hourOffset
+    const tWind = Number(interpolateSeries(weather.hourly?.wind_speed_10m, weatherHour, windKts).toFixed(1))
+    const tWindDir = Math.round(interpolateDegrees(
+      weather.hourly?.wind_direction_10m?.[Math.floor(weatherHour)] ?? windDirDeg,
+      weather.hourly?.wind_direction_10m?.[Math.ceil(weatherHour)] ?? windDirDeg,
+      weatherHour - Math.floor(weatherHour),
+    ) ?? windDirDeg)
     const tWave = pickMarineHeight(
-      marine.hourly?.wave_height?.[marineHour],
-      marine.hourly?.wind_wave_height?.[marineHour],
-      marine.hourly?.swell_wave_height?.[marineHour],
+      interpolateSeries(marine.hourly?.wave_height, marineHour, waveM),
+      interpolateSeries(marine.hourly?.wind_wave_height, marineHour, waveM),
+      interpolateSeries(marine.hourly?.swell_wave_height, marineHour, waveM),
     )
-    const tCurrent = kmhToKnots(marine.hourly?.ocean_current_velocity?.[marineHour])
-    const tTide = Number((marine.hourly?.sea_level_height_msl?.[marineHour] ?? seaLevel).toFixed(2))
+    const tCurrent = kmhToKnots(interpolateSeries(marine.hourly?.ocean_current_velocity, marineHour, currentKts / 0.539957))
+    const tCurrentDir = Math.round(interpolateDegrees(
+      marine.hourly?.ocean_current_direction?.[Math.floor(marineHour)] ?? currentDirDeg,
+      marine.hourly?.ocean_current_direction?.[Math.ceil(marineHour)] ?? currentDirDeg,
+      marineHour - Math.floor(marineHour),
+    ) ?? currentDirDeg)
+    const tTide = Number(interpolateSeries(marine.hourly?.sea_level_height_msl, marineHour, seaLevel).toFixed(2))
+    const tTemp = Number(interpolateSeries(weather.hourly?.temperature_2m, weatherHour, weather.current?.temperature_2m ?? 0).toFixed(1))
+    const tSst = Number(interpolateSeries(marine.hourly?.sea_surface_temperature, marineHour, sst).toFixed(1))
+    const tPressure = Number(interpolateSeries(weather.hourly?.pressure_msl, weatherHour, weather.current?.pressure_msl ?? 0).toFixed(1))
+    const tPrecip = Number(interpolateSeries(weather.hourly?.precipitation, weatherHour, weather.current?.precipitation ?? 0).toFixed(1))
+    const tPeriod = Number(interpolateSeries(marine.hourly?.wave_period, marineHour, marine.current?.wave_period ?? 0).toFixed(1))
+    const isoTime = addMinutesToIsoLike(weather.hourly?.time?.[weatherIndex] ?? marine.hourly?.time?.[marineIndex], itemIndex * 30)
     return {
-      isoTime: weather.hourly?.time?.[weatherHour] ?? marine.hourly?.time?.[marineHour],
-      time: (weather.hourly?.time?.[weatherHour] ?? marine.hourly?.time?.[marineHour] ?? '').slice(11, 16),
+      isoTime,
+      time: isoTime.slice(11, 16),
       bite: Math.max(5, Math.min(95, Math.round(score - Math.max(0, tWind - 12) * 2 - Math.max(0, tWave - 1.5) * 8))),
+      airTempC: tTemp,
+      condition: weatherCodeName(weather.hourly?.weather_code?.[Math.round(weatherHour)] ?? weather.current?.weather_code),
       windKts: tWind,
-      windDirDeg: Math.round(weather.hourly?.wind_direction_10m?.[weatherHour] ?? windDirDeg),
+      windDirDeg: tWindDir,
       currentKts: tCurrent,
+      currentDirDeg: tCurrentDir,
       waveM: tWave,
+      wavePeriodS: tPeriod,
       tideHeightM: tTide,
+      precipMm: tPrecip,
+      pressureHpa: tPressure,
+      sstC: tSst,
     }
   })
 
@@ -1069,6 +1115,7 @@ function MapView({
   const mapNode = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const selectedRef = useRef(selected)
+  const inspectorDragRef = useRef<{ dx: number; dy: number } | null>(null)
   const [mode, setMode] = useState<OverlayMode>('wind')
   const [searchText, setSearchText] = useState('')
   const [isLoadingPoint, setIsLoadingPoint] = useState(false)
@@ -1103,6 +1150,25 @@ function MapView({
   useEffect(() => {
     selectedRef.current = selected
   }, [selected])
+
+  useEffect(() => {
+    const move = (event: PointerEvent) => {
+      const drag = inspectorDragRef.current
+      if (!drag) return
+      setInspectorPoint({ x: event.clientX - drag.dx, y: event.clientY - drag.dy })
+    }
+    const stop = () => {
+      inspectorDragRef.current = null
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', stop)
+    window.addEventListener('pointercancel', stop)
+    return () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', stop)
+      window.removeEventListener('pointercancel', stop)
+    }
+  }, [])
 
   useEffect(() => {
     if (!mapNode.current || mapRef.current) return
@@ -1279,6 +1345,12 @@ function MapView({
     setWorkbenchPanel('stations')
   }
 
+  function startInspectorDrag(event: React.PointerEvent<HTMLElement>) {
+    const target = event.target as HTMLElement
+    if (target.closest('button, input, a')) return
+    inspectorDragRef.current = { dx: event.clientX - inspectorPoint.x, dy: event.clientY - inspectorPoint.y }
+  }
+
   const scoreRiskTone = scoreTone(selected.score)
   const activeTone = overlayTone(mode, selected)
   const layerLabel = overlayModes.find((item) => item.id === mode)?.label ?? '图层'
@@ -1371,7 +1443,7 @@ function MapView({
         <button className="workbench-close" aria-label="关闭预报窗口" onClick={() => setInspectorOpen(false)}>
           <X size={18} />
         </button>
-        <div className="workbench-header">
+        <div className="workbench-header draggable-header" onPointerDown={startInspectorDrag}>
           <div>
             <strong>海况工作台</strong>
             <span>{stationPredictionLabel(effectiveStationTimeIso)} · {canadaStationCount} 个潮流站 · {okSourceCount}/{sourceCount} 个 API 正常</span>
@@ -1396,6 +1468,7 @@ function MapView({
         </div>
         <ForecastDetail
           forecast={selected}
+          activeSlot={activeTimelineSlot}
           panel={workbenchPanel}
           stationTimeIso={effectiveStationTimeIso}
           activeStation={activeStation}
@@ -1413,7 +1486,7 @@ function MapView({
         <div className="time-scrubber">
           <div>
             <strong>预测时间</strong>
-            <span>{activeTimelineSlot?.time ?? '--:--'} · 预报和潮流箭头同步</span>
+            <span>{activeTimelineSlot?.time ?? '--:--'} · 每 30 分钟 · 预报和潮流箭头同步</span>
           </div>
           <input
             aria-label="选择预测时间"
@@ -1553,6 +1626,7 @@ function CurrentStationDetail({
 
 function ForecastDetail({
   forecast,
+  activeSlot,
   panel,
   stationTimeIso,
   activeStation,
@@ -1565,6 +1639,7 @@ function ForecastDetail({
   onFocusStation,
 }: {
   forecast: ForecastGridCell
+  activeSlot?: ForecastGridCell['timeline'][number]
   panel: WorkbenchPanel
   stationTimeIso?: string
   activeStation?: OfficialStationReading
@@ -1576,12 +1651,25 @@ function ForecastDetail({
   error?: string | null
   onFocusStation?: (station: OfficialStationReading) => void
 }) {
+  const displayScore = activeSlot?.bite ?? forecast.score
+  const displayCondition = activeSlot?.condition ?? forecast.weather.condition
+  const displayAirTemp = activeSlot?.airTempC ?? forecast.weather.airTempC
+  const displayWind = activeSlot?.windKts ?? forecast.weather.windKts
+  const displayWindDir = activeSlot?.windDirDeg ?? forecast.weather.windDirDeg
+  const displayWave = activeSlot?.waveM ?? forecast.marine.waveM
+  const displayWavePeriod = activeSlot?.wavePeriodS ?? forecast.marine.wavePeriodS
+  const displayCurrent = activeSlot?.currentKts ?? forecast.water.currentKts
+  const displayCurrentDir = activeSlot?.currentDirDeg ?? forecast.water.currentDirDeg
+  const displayTide = activeSlot?.tideHeightM ?? forecast.marine.tideHeightM
+  const displayPressure = activeSlot?.pressureHpa ?? forecast.marine.pressureHpa
+  const displayPrecip = activeSlot?.precipMm ?? forecast.marine.precipMm
+  const displaySst = activeSlot?.sstC ?? forecast.water.sstC
   const breakdown = [
-    { label: '天气', value: `${forecast.weather.condition} / ${forecast.weather.airTempC} C`, note: `${pressureName(forecast.weather.pressureTrend)}，气压 ${forecast.marine.pressureHpa} hPa，降水 ${forecast.marine.precipMm} mm。` },
-    { label: '风浪', value: `${forecast.weather.windKts} 节 / ${formatMeters(forecast.marine.waveM)} 米`, note: weatherInterpretation(forecast) },
-    { label: '海流', value: `${forecast.water.currentKts} 节`, note: currentInterpretation(forecast) },
-    { label: '海平面', value: `${tideName(forecast.water.tide)} ${forecast.marine.tideHeightM} 米`, note: `Open-Meteo 提供 sea_level_height_msl，可作为潮位趋势参考；水流方向 ${forecast.water.currentDirDeg} 度。` },
-    { label: '水温', value: `${forecast.water.sstC} C`, note: `${forecast.water.clarity}。Open-Meteo Marine API 提供海表温度，不提供水色/能见度。` },
+    { label: '天气', value: `${displayCondition} / ${displayAirTemp} C`, note: `${pressureName(forecast.weather.pressureTrend)}，气压 ${displayPressure} hPa，降水 ${displayPrecip} mm。` },
+    { label: '风浪', value: `${displayWind} 节 / ${formatMeters(displayWave)} 米`, note: weatherInterpretation(forecast) },
+    { label: '海流', value: `${displayCurrent} 节`, note: currentInterpretation(forecast) },
+    { label: '海平面', value: `${tideName(forecast.water.tide)} ${displayTide} 米`, note: `Open-Meteo 提供 sea_level_height_msl，可作为潮位趋势参考；水流方向 ${displayCurrentDir} 度。` },
+    { label: '水温', value: `${displaySst} C`, note: `${forecast.water.clarity}。Open-Meteo Marine API 提供海表温度，不提供水色/能见度。` },
   ]
   const apiSources = forecast.apiSources ?? []
   const canada = forecast.canadianStations
@@ -1606,19 +1694,19 @@ function ForecastDetail({
           <p className="eyebrow">真实 API 点预报</p>
           <h2>{forecast.name}</h2>
         </div>
-        <div className={`score-pill ${toneClass(scoreTone(forecast.score))}`}><strong>{forecast.score}</strong><span>{scoreLabel(forecast.score)}</span></div>
+        <div className={`score-pill ${toneClass(scoreTone(displayScore))}`}><strong>{displayScore}</strong><span>{scoreLabel(displayScore)}</span></div>
       </div>
       <div className="stats-grid">
-        <StatCard icon={Wind} label="风" value={`${forecast.weather.windKts} 节`} detail={windDirectionDetail(forecast.weather.windDirDeg)} tone={windTone(forecast.weather.windKts)} />
-        <StatCard icon={Waves} label="浪" value={`${formatMeters(forecast.marine.waveM)} 米`} detail={`${forecast.marine.wavePeriodS} 秒周期`} tone={waveTone(forecast.marine.waveM)} />
-        <StatCard icon={Gauge} label="海流" value={`${forecast.water.currentKts} 节`} detail={`${forecast.water.currentDirDeg} 度 / ${tideName(forecast.water.tide)}`} tone={currentTone(forecast.water.currentKts)} />
-        <StatCard icon={ThermometerSun} label="水温" value={`${forecast.water.sstC} C`} detail={forecast.water.clarity} tone={sstTone(forecast.water.sstC)} />
+        <StatCard icon={Wind} label="风" value={`${displayWind} 节`} detail={windDirectionDetail(displayWindDir)} tone={windTone(displayWind)} />
+        <StatCard icon={Waves} label="浪" value={`${formatMeters(displayWave)} 米`} detail={`${displayWavePeriod} 秒周期`} tone={waveTone(displayWave)} />
+        <StatCard icon={Gauge} label="海流" value={`${displayCurrent} 节`} detail={`${displayCurrentDir} 度 / ${tideName(forecast.water.tide)}`} tone={currentTone(displayCurrent)} />
+        <StatCard icon={ThermometerSun} label="水温" value={`${displaySst} C`} detail={forecast.water.clarity} tone={sstTone(displaySst)} />
       </div>
       {panel === 'forecast' && (
         <div className="workbench-panel point-panel">
           <div className="current-row">
-            <CurrentArrow degrees={forecast.water.currentDirDeg} />
-            <span>{forecast.lat.toFixed(3)}, {forecast.lng.toFixed(3)} · {forecast.weather.condition} · 气压 {forecast.marine.pressureHpa} hPa · 降水 {forecast.marine.precipMm} mm · {forecast.fish.tactic}</span>
+            <CurrentArrow degrees={displayCurrentDir} />
+            <span>{forecast.lat.toFixed(3)}, {forecast.lng.toFixed(3)} · {activeSlot?.time ?? '当前'} · {displayCondition} · 气压 {displayPressure} hPa · 降水 {displayPrecip} mm · {forecast.fish.tactic}</span>
           </div>
           <div className="analysis-strip">
             {breakdown.slice(0, 4).map((item) => (
@@ -1687,8 +1775,8 @@ function ForecastDetail({
           <span>免费 API 聚合结果；模型海流、站点潮流、水位潮汐按来源分开判断。</span>
         </div>
         <div className="current-row">
-          <CurrentArrow degrees={forecast.water.currentDirDeg} />
-          <span>{forecast.lat.toFixed(3)}, {forecast.lng.toFixed(3)} · {forecast.weather.condition} · 气压 {forecast.marine.pressureHpa} hPa · 降水 {forecast.marine.precipMm} mm · {forecast.fish.tactic}</span>
+          <CurrentArrow degrees={displayCurrentDir} />
+          <span>{forecast.lat.toFixed(3)}, {forecast.lng.toFixed(3)} · {activeSlot?.time ?? '当前'} · {displayCondition} · 气压 {displayPressure} hPa · 降水 {displayPrecip} mm · {forecast.fish.tactic}</span>
         </div>
         <div className="accuracy-warning">
           {isLoading ? '正在请求真实天气、海洋、空气质量、NOAA 与 NWS 数据...' : error ? `接口错误：${error}` : '免费 API 已实时聚合；模型和站点数据均非航海保证，出海前仍需核对官方海况、潮汐、VHF 和当地法规。'}

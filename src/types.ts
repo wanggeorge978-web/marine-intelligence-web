@@ -57,11 +57,18 @@ export type MarinePointForecast = {
     isoTime?: string
     time: string
     bite: number
+    airTempC?: number
+    condition?: string
     windKts: number
     windDirDeg?: number
     currentKts: number
+    currentDirDeg?: number
     waveM?: number
+    wavePeriodS?: number
     tideHeightM?: number
+    precipMm?: number
+    pressureHpa?: number
+    sstC?: number
   }>
   apiSources?: ApiSourceStatus[]
 }
