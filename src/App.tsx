@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import {
@@ -31,6 +31,7 @@ import { loadAppData } from './dataLoader'
 import { loadStoredSpots, saveStoredSpots } from './storage'
 import type {
   AlbacoreFeatureProperties,
+  ApiSourceStatus,
   AppData,
   ForecastGridCell,
   MarinePointForecast,
@@ -121,7 +122,7 @@ function statusName(value: string) {
     closed: '关闭',
     ok: '正常',
     stale: '过期',
-    demo: '演示',
+    demo: '待接入',
     watch: '关注',
     advisory: '提醒',
     warning: '警告',
@@ -136,15 +137,6 @@ function scoreLabel(score: number) {
   if (score >= 70) return '可以出钓'
   if (score >= 55) return '勉强可钓'
   return '不建议'
-}
-
-function overlayValue(cell: ForecastGridCell, mode: OverlayMode) {
-  if (mode === 'weather') return cell.score
-  if (mode === 'wind') return cell.weather.windKts
-  if (mode === 'waves') return cell.marine.waveM
-  if (mode === 'current') return cell.water.currentKts
-  if (mode === 'tide') return cell.marine.tideHeightM
-  return cell.water.sstC
 }
 
 function weatherCodeName(code?: number) {
@@ -202,6 +194,216 @@ function nearestHourlyIndex(times: string[] = [], currentTime?: string) {
   return best
 }
 
+type NoaaStation = {
+  id: string
+  name: string
+  lat: number
+  lng: number
+}
+
+type NoaaPrediction = {
+  station: NoaaStation
+  distanceKm: number
+  value: number
+  time: string
+}
+
+type NoaaCurrentPrediction = NoaaPrediction & {
+  directionDeg: number
+}
+
+type FreeApiExtras = {
+  sources: ApiSourceStatus[]
+  airQuality?: {
+    usAqi?: number
+    pm25?: number
+    pm10?: number
+  }
+  noaaTide?: NoaaPrediction
+  noaaCurrent?: NoaaCurrentPrediction
+  nwsAlerts?: Array<{ event?: string; severity?: string }>
+}
+
+let noaaWaterLevelStationsPromise: Promise<NoaaStation[]> | null = null
+let noaaCurrentStationsPromise: Promise<NoaaStation[]> | null = null
+
+function todayYmd() {
+  return new Date().toISOString().slice(0, 10).replaceAll('-', '')
+}
+
+function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
+  const earthKm = 6371
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180
+  const dLng = ((b.lng - a.lng) * Math.PI) / 180
+  const lat1 = (a.lat * Math.PI) / 180
+  const lat2 = (b.lat * Math.PI) / 180
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2
+  return 2 * earthKm * Math.asin(Math.sqrt(h))
+}
+
+async function fetchJsonWithTimeout<T>(url: string, timeoutMs = 7000): Promise<T> {
+  const controller = new AbortController()
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const response = await fetch(url, { signal: controller.signal })
+    if (!response.ok) throw new Error(`${response.status}`)
+    return response.json() as Promise<T>
+  } finally {
+    window.clearTimeout(timer)
+  }
+}
+
+async function fetchNoaaStations(type: 'waterlevels' | 'currentpredictions') {
+  const url = `https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations.json?type=${type}`
+  const data = await fetchJsonWithTimeout<{ stations?: NoaaStation[] }>(url, 10000)
+  return (data.stations ?? []).filter((station) => Number.isFinite(station.lat) && Number.isFinite(station.lng))
+}
+
+function nearestStation(stations: NoaaStation[], lat: number, lng: number, maxKm: number): { station: NoaaStation; distanceKm: number } | null {
+  let best: { station: NoaaStation; distanceKm: number } | null = null
+  for (const station of stations) {
+    const distanceKm = haversineKm({ lat, lng }, station)
+    if (distanceKm <= maxKm && (!best || distanceKm < best.distanceKm)) {
+      best = { station, distanceKm }
+    }
+  }
+  return best
+}
+
+function nearestTimedItem<T extends { t?: string; Time?: string }>(items: T[] = []) {
+  const now = Date.now()
+  return items.reduce<T | undefined>((best, item) => {
+    const itemTime = new Date(item.t ?? item.Time ?? '').getTime()
+    const bestTime = new Date(best?.t ?? best?.Time ?? '').getTime()
+    if (!Number.isFinite(itemTime)) return best
+    if (!best || Math.abs(itemTime - now) < Math.abs(bestTime - now)) return item
+    return best
+  }, undefined)
+}
+
+async function fetchOpenMeteoAirQuality(lat: number, lng: number) {
+  const params = new URLSearchParams({
+    latitude: String(lat),
+    longitude: String(lng),
+    current: 'us_aqi,pm2_5,pm10',
+    timezone: 'auto',
+  })
+  const data = await fetchJsonWithTimeout<{
+    current?: { us_aqi?: number; pm2_5?: number; pm10?: number }
+  }>(`https://air-quality-api.open-meteo.com/v1/air-quality?${params}`)
+  return {
+    usAqi: data.current?.us_aqi,
+    pm25: data.current?.pm2_5,
+    pm10: data.current?.pm10,
+  }
+}
+
+async function fetchNoaaTidePrediction(lat: number, lng: number): Promise<NoaaPrediction | null> {
+  noaaWaterLevelStationsPromise ??= fetchNoaaStations('waterlevels')
+  const stations = await noaaWaterLevelStationsPromise
+  const nearest = nearestStation(stations, lat, lng, 350)
+  if (!nearest) return null
+  const params = new URLSearchParams({
+    product: 'predictions',
+    application: 'marine-intelligence-web',
+    begin_date: todayYmd(),
+    range: '48',
+    datum: 'MLLW',
+    station: nearest.station.id,
+    time_zone: 'lst_ldt',
+    units: 'metric',
+    format: 'json',
+  })
+  const data = await fetchJsonWithTimeout<{ predictions?: Array<{ t: string; v: string }> }>(
+    `https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?${params}`,
+  )
+  const item = nearestTimedItem(data.predictions)
+  const value = Number(item?.v)
+  if (!item || !Number.isFinite(value)) return null
+  return { station: nearest.station, distanceKm: nearest.distanceKm, value: Number(value.toFixed(2)), time: item.t }
+}
+
+async function fetchNoaaCurrentPrediction(lat: number, lng: number): Promise<NoaaCurrentPrediction | null> {
+  noaaCurrentStationsPromise ??= fetchNoaaStations('currentpredictions')
+  const stations = await noaaCurrentStationsPromise
+  const nearest = nearestStation(stations, lat, lng, 250)
+  if (!nearest) return null
+  const params = new URLSearchParams({
+    product: 'currents_predictions',
+    application: 'marine-intelligence-web',
+    begin_date: todayYmd(),
+    range: '48',
+    station: nearest.station.id,
+    time_zone: 'lst_ldt',
+    units: 'metric',
+    format: 'json',
+  })
+  const data = await fetchJsonWithTimeout<{
+    current_predictions?: { cp?: Array<{ Time: string; Velocity_Major: number; meanFloodDir?: number; meanEbbDir?: number }> }
+  }>(`https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?${params}`)
+  const item = nearestTimedItem(data.current_predictions?.cp)
+  const velocityCms = Number(item?.Velocity_Major)
+  if (!item || !Number.isFinite(velocityCms)) return null
+  return {
+    station: nearest.station,
+    distanceKm: nearest.distanceKm,
+    value: Number((Math.abs(velocityCms) * 0.0194384).toFixed(1)),
+    directionDeg: Math.round(velocityCms >= 0 ? item.meanFloodDir ?? 0 : item.meanEbbDir ?? 0),
+    time: item.Time,
+  }
+}
+
+async function fetchNwsAlerts(lat: number, lng: number) {
+  const params = new URLSearchParams({ point: `${lat.toFixed(4)},${lng.toFixed(4)}` })
+  const data = await fetchJsonWithTimeout<{
+    features?: Array<{ properties?: { event?: string; severity?: string } }>
+  }>(`https://api.weather.gov/alerts/active?${params}`)
+  return (data.features ?? []).map((feature) => ({
+    event: feature.properties?.event,
+    severity: feature.properties?.severity,
+  }))
+}
+
+async function fetchFreeApiExtras(lat: number, lng: number): Promise<FreeApiExtras> {
+  const extras: FreeApiExtras = { sources: [] }
+  const [airQuality, noaaTide, noaaCurrent, nwsAlerts] = await Promise.allSettled([
+    fetchOpenMeteoAirQuality(lat, lng),
+    fetchNoaaTidePrediction(lat, lng),
+    fetchNoaaCurrentPrediction(lat, lng),
+    fetchNwsAlerts(lat, lng),
+  ])
+
+  if (airQuality.status === 'fulfilled') {
+    extras.airQuality = airQuality.value
+    extras.sources.push({ name: 'Open-Meteo Air Quality', status: 'ok', detail: `AQI ${airQuality.value.usAqi ?? 'N/A'} / PM2.5 ${airQuality.value.pm25 ?? 'N/A'}` })
+  } else {
+    extras.sources.push({ name: 'Open-Meteo Air Quality', status: 'failed', detail: '空气质量接口未返回' })
+  }
+
+  if (noaaTide.status === 'fulfilled' && noaaTide.value) {
+    extras.noaaTide = noaaTide.value
+    extras.sources.push({ name: 'NOAA CO-OPS Tide', status: 'ok', detail: `${noaaTide.value.station.name} ${noaaTide.value.value} m，约 ${Math.round(noaaTide.value.distanceKm)} km` })
+  } else {
+    extras.sources.push({ name: 'NOAA CO-OPS Tide', status: noaaTide.status === 'rejected' ? 'failed' : 'limited', detail: '附近 350 km 未命中美国 NOAA 潮位站' })
+  }
+
+  if (noaaCurrent.status === 'fulfilled' && noaaCurrent.value) {
+    extras.noaaCurrent = noaaCurrent.value
+    extras.sources.push({ name: 'NOAA CO-OPS Current', status: 'ok', detail: `${noaaCurrent.value.station.name} ${noaaCurrent.value.value} kt，约 ${Math.round(noaaCurrent.value.distanceKm)} km` })
+  } else {
+    extras.sources.push({ name: 'NOAA CO-OPS Current', status: noaaCurrent.status === 'rejected' ? 'failed' : 'limited', detail: '附近 250 km 未命中美国 NOAA 潮流站' })
+  }
+
+  if (nwsAlerts.status === 'fulfilled') {
+    extras.nwsAlerts = nwsAlerts.value
+    extras.sources.push({ name: 'NWS Alerts', status: 'ok', detail: nwsAlerts.value.length ? `${nwsAlerts.value.length} 条美国天气预警` : '无美国 NWS 活跃预警' })
+  } else {
+    extras.sources.push({ name: 'NWS Alerts', status: 'limited', detail: '该坐标可能不在美国 NWS 覆盖范围' })
+  }
+
+  return extras
+}
+
 async function fetchRealForecast(lng: number, lat: number): Promise<ForecastGridCell> {
   const weatherParams = new URLSearchParams({
     latitude: String(lat),
@@ -220,9 +422,10 @@ async function fetchRealForecast(lng: number, lat: number): Promise<ForecastGrid
     timezone: 'auto',
     forecast_days: '7',
   })
-  const [weatherResponse, marineResponse] = await Promise.all([
+  const [weatherResponse, marineResponse, extras] = await Promise.all([
     fetch(`https://api.open-meteo.com/v1/forecast?${weatherParams}`),
     fetch(`https://marine-api.open-meteo.com/v1/marine?${marineParams}`),
+    fetchFreeApiExtras(lat, lng),
   ])
   if (!weatherResponse.ok || !marineResponse.ok) {
     throw new Error('真实天气/海洋预报接口请求失败')
@@ -235,8 +438,11 @@ async function fetchRealForecast(lng: number, lat: number): Promise<ForecastGrid
   const waveM = Number((marine.current?.wave_height ?? 0).toFixed(1))
   const windKts = Number((weather.current?.wind_speed_10m ?? 0).toFixed(1))
   const seaLevel = Number((marine.current?.sea_level_height_msl ?? 0).toFixed(2))
+  const bestCurrentKts = extras.noaaCurrent?.value ?? currentKts
+  const bestCurrentDir = extras.noaaCurrent?.directionDeg ?? Math.round(marine.current?.ocean_current_direction ?? 0)
+  const bestTideHeight = extras.noaaTide?.value ?? seaLevel
   const sst = Number((marine.current?.sea_surface_temperature ?? marine.hourly?.sea_surface_temperature?.[marineIndex] ?? 0).toFixed(1))
-  const score = Math.max(20, Math.min(95, Math.round(92 - Math.max(0, windKts - 10) * 2.2 - Math.max(0, waveM - 1.2) * 10 - Math.max(0, currentKts - 1.8) * 8)))
+  const score = Math.max(20, Math.min(95, Math.round(92 - Math.max(0, windKts - 10) * 2.2 - Math.max(0, waveM - 1.2) * 10 - Math.max(0, bestCurrentKts - 1.8) * 8)))
   const timeline = Array.from({ length: 8 }, (_, itemIndex) => {
     const weatherHour = weatherIndex + itemIndex * 3
     const marineHour = marineIndex + itemIndex * 3
@@ -272,8 +478,8 @@ async function fetchRealForecast(lng: number, lat: number): Promise<ForecastGrid
       pressureTrend: trendFromPressure(weather.hourly),
     },
     water: {
-      currentKts,
-      currentDirDeg: Math.round(marine.current?.ocean_current_direction ?? 0),
+      currentKts: bestCurrentKts,
+      currentDirDeg: bestCurrentDir,
       swellM: Number((marine.current?.swell_wave_height ?? marine.current?.wave_height ?? 0).toFixed(1)),
       swellPeriodS: Number((marine.current?.wave_period ?? 0).toFixed(1)),
       tide: tideFromSeaLevel(marine.hourly),
@@ -284,7 +490,7 @@ async function fetchRealForecast(lng: number, lat: number): Promise<ForecastGrid
       waveM,
       wavePeriodS: Number((marine.current?.wave_period ?? 0).toFixed(1)),
       swellDirDeg: Math.round(marine.current?.swell_wave_direction ?? marine.current?.wave_direction ?? 0),
-      tideHeightM: seaLevel,
+      tideHeightM: bestTideHeight,
       salinityPsu: 0,
       visibilityKm: 0,
       precipMm: Number((weather.current?.precipitation ?? 0).toFixed(1)),
@@ -293,120 +499,15 @@ async function fetchRealForecast(lng: number, lat: number): Promise<ForecastGrid
     fish: {
       target: '按真实天气/海况判断目标鱼',
       biteWindow: '查看下方分时预测',
-      tactic: '此点天气、风浪、海表温度、海流和海平面高度来自 Open-Meteo 实时接口。水流为模型预报，仍需和官方海况、潮汐表交叉验证。',
-      risk: '真实接口数据也不是航海保证；出海前仍需核对官方预警、潮汐和当地规定。',
+      tactic: `此点已接入 Open-Meteo 天气/海洋/空气质量，NOAA CO-OPS 潮位/潮流站，以及 NWS 美国天气预警。${extras.noaaCurrent ? '海流优先使用附近 NOAA 潮流站预测。' : '海流当前使用 Open-Meteo 海洋模型。'}`,
+      risk: '免费 API 有区域覆盖和频率限制；真实出海仍需核对官方海况、潮汐、VHF 和当地法规。',
     },
     timeline,
-  }
-}
-
-function overlayLabel(cell: ForecastGridCell, mode: OverlayMode) {
-  const modeInfo = overlayModes.find((item) => item.id === mode)
-  const unit = modeInfo?.unit ?? ''
-  const value = overlayValue(cell, mode)
-  if (mode === 'weather') return `${Math.round(value)} 分`
-  if (mode === 'tide') return `${value.toFixed(1)} ${unit}`
-  return `${value.toFixed(1)} ${unit}`
-}
-
-function valueColorExpression(mode: OverlayMode): maplibregl.ExpressionSpecification {
-  if (mode === 'weather') {
-    return ['interpolate', ['linear'], ['get', 'value'], 35, '#c94c4c', 60, '#f2b705', 82, '#14a098']
-  }
-  if (mode === 'wind') {
-    return ['interpolate', ['linear'], ['get', 'value'], 4, '#d9f0a3', 12, '#fdae61', 22, '#d7191c']
-  }
-  if (mode === 'waves') {
-    return ['interpolate', ['linear'], ['get', 'value'], 0.3, '#9bd7f0', 1.5, '#2b83ba', 3.5, '#542788']
-  }
-  if (mode === 'current') {
-    return ['interpolate', ['linear'], ['get', 'value'], 0.2, '#c7eae5', 1.4, '#35978f', 3.0, '#01665e']
-  }
-  if (mode === 'tide') {
-    return ['interpolate', ['linear'], ['get', 'value'], -1.2, '#2166ac', 0, '#f7f7f7', 1.2, '#b2182b']
-  }
-  return ['interpolate', ['linear'], ['get', 'value'], 10, '#2166ac', 13.5, '#1a9850', 16.5, '#fdae61']
-}
-
-function gridToGeoJson(grid: ForecastGridCell[], mode: OverlayMode): GeoJSON.FeatureCollection<GeoJSON.Point> {
-  return {
-    type: 'FeatureCollection',
-    features: grid.map((cell) => ({
-      type: 'Feature',
-      properties: {
-        id: cell.id,
-        value: overlayValue(cell, mode),
-        label: overlayLabel(cell, mode),
-        score: cell.score,
-      },
-      geometry: { type: 'Point', coordinates: [cell.lng, cell.lat] },
-    })),
-  }
-}
-
-function distanceScore(cell: ForecastGridCell, lng: number, lat: number) {
-  const dx = (cell.lng - lng) * Math.cos((lat * Math.PI) / 180)
-  const dy = cell.lat - lat
-  return dx * dx + dy * dy
-}
-
-function nearestCell(grid: ForecastGridCell[], lng: number, lat: number) {
-  return grid.reduce((best, cell) => (distanceScore(cell, lng, lat) < distanceScore(best, lng, lat) ? cell : best), grid[0])
-}
-
-function sampledForecast(grid: ForecastGridCell[], lng: number, lat: number): ForecastGridCell {
-  const ranked = [...grid].sort((a, b) => distanceScore(a, lng, lat) - distanceScore(b, lng, lat)).slice(0, 4)
-  const weights = ranked.map((cell) => 1 / Math.max(0.0001, distanceScore(cell, lng, lat)))
-  const total = weights.reduce((sum, value) => sum + value, 0)
-  const avg = (getter: (cell: ForecastGridCell) => number) =>
-    ranked.reduce((sum, cell, index) => sum + getter(cell) * weights[index], 0) / total
-  const base = nearestCell(grid, lng, lat)
-  const score = Math.round(avg((cell) => cell.score))
-  const windKts = Number(avg((cell) => cell.weather.windKts).toFixed(1))
-  const currentKts = Number(avg((cell) => cell.water.currentKts).toFixed(1))
-  const waveM = Number(avg((cell) => cell.marine.waveM).toFixed(1))
-  const sstC = Number(avg((cell) => cell.water.sstC).toFixed(1))
-  const tideHeightM = Number(avg((cell) => cell.marine.tideHeightM).toFixed(2))
-
-  return {
-    ...base,
-    id: `sample-${lng.toFixed(3)}-${lat.toFixed(3)}`,
-    name: `点击位置 ${lat.toFixed(3)}, ${lng.toFixed(3)}`,
-    lat,
-    lng,
-    score,
-    weather: {
-      ...base.weather,
-      windKts,
-      airTempC: Number(avg((cell) => cell.weather.airTempC).toFixed(1)),
-    },
-    water: {
-      ...base.water,
-      currentKts,
-      swellM: Number(avg((cell) => cell.water.swellM).toFixed(1)),
-      sstC,
-    },
-    marine: {
-      ...base.marine,
-      waveM,
-      tideHeightM,
-      pressureHpa: Number(avg((cell) => cell.marine.pressureHpa).toFixed(1)),
-      visibilityKm: Number(avg((cell) => cell.marine.visibilityKm).toFixed(1)),
-      precipMm: Number(avg((cell) => cell.marine.precipMm).toFixed(1)),
-      salinityPsu: Number(avg((cell) => cell.marine.salinityPsu).toFixed(1)),
-    },
-    fish: {
-      ...base.fish,
-      tactic: '这是点击位置附近 4 个网格的近似采样。先看风浪和水流是否安全，再看潮汐、水温和鱼情窗口。',
-    },
-    timeline: base.timeline.map((slot, index) => ({
-      ...slot,
-      bite: Math.round(avg((cell) => cell.timeline[index]?.bite ?? slot.bite)),
-      windKts: Number(avg((cell) => cell.timeline[index]?.windKts ?? windKts).toFixed(1)),
-      currentKts: Number(avg((cell) => cell.timeline[index]?.currentKts ?? currentKts).toFixed(1)),
-      waveM: Number(avg((cell) => cell.timeline[index]?.waveM ?? waveM).toFixed(1)),
-      tideHeightM: Number(avg((cell) => cell.timeline[index]?.tideHeightM ?? tideHeightM).toFixed(2)),
-    })),
+    apiSources: [
+      { name: 'Open-Meteo Forecast', status: 'ok', detail: '天气、风、气压、降水' },
+      { name: 'Open-Meteo Marine', status: 'ok', detail: '浪、海流、海表温度、海平面' },
+      ...extras.sources,
+    ],
   }
 }
 
@@ -479,7 +580,7 @@ function Shell({ page, setPage, children }: { page: PageId; setPage: (page: Page
         </nav>
         <div className="source-note">
           <AlertTriangle size={16} />
-          <span>当前为全区域演示网格，不是官方海事预报。真实出海前必须核对官方天气、潮汐、规则和船况。</span>
+          <span>地图页已接入真实免费 API；规则和法规页仍需以后续官方源继续补全。真实出海前必须核对官方天气、潮汐、规则和船况。</span>
         </div>
       </aside>
       <main className="main">{children}</main>
@@ -501,7 +602,6 @@ function MapView({
   const [searchText, setSearchText] = useState('')
   const [isLoadingPoint, setIsLoadingPoint] = useState(false)
   const [pointError, setPointError] = useState<string | null>(null)
-  const gridGeojson = useMemo(() => gridToGeoJson([], mode), [mode])
 
   const loadPoint = useCallback(async (lng: number, lat: number) => {
     setPointError(null)
@@ -530,36 +630,8 @@ function MapView({
     mapRef.current = map
 
     map.on('load', () => {
-      map.addSource('forecast-grid', { type: 'geojson', data: gridGeojson })
-      map.addLayer({
-        id: 'forecast-grid-circles',
-        type: 'circle',
-        source: 'forecast-grid',
-        paint: {
-          'circle-color': valueColorExpression(mode),
-          'circle-radius': ['interpolate', ['linear'], ['zoom'], 6, 7, 9, 14],
-          'circle-opacity': 0.74,
-          'circle-stroke-width': 0.6,
-          'circle-stroke-color': '#ffffff',
-        },
-      })
-      map.addLayer({
-        id: 'forecast-grid-labels',
-        type: 'symbol',
-        source: 'forecast-grid',
-        minzoom: 8,
-        layout: { 'text-field': ['get', 'label'], 'text-size': 11, 'text-offset': [0, 1.3], 'text-anchor': 'top' },
-        paint: { 'text-color': '#152024', 'text-halo-color': '#ffffff', 'text-halo-width': 1.2 },
-      })
-
       map.on('click', (event) => {
         void loadPoint(event.lngLat.lng, event.lngLat.lat)
-      })
-      map.on('mouseenter', 'forecast-grid-circles', () => {
-        map.getCanvas().style.cursor = 'crosshair'
-      })
-      map.on('mouseleave', 'forecast-grid-circles', () => {
-        map.getCanvas().style.cursor = ''
       })
     })
 
@@ -568,17 +640,7 @@ function MapView({
       map.remove()
       mapRef.current = null
     }
-  }, [gridGeojson, loadPoint, mode])
-
-  useEffect(() => {
-    const map = mapRef.current
-    const source = map?.getSource('forecast-grid') as maplibregl.GeoJSONSource | undefined
-    if (!map || !source) return
-    source.setData(gridGeojson)
-    if (map.getLayer('forecast-grid-circles')) {
-      map.setPaintProperty('forecast-grid-circles', 'circle-color', valueColorExpression(mode))
-    }
-  }, [gridGeojson, mode])
+  }, [loadPoint])
 
   useEffect(() => {
     const map = mapRef.current
@@ -680,6 +742,7 @@ function ForecastDetail({ forecast, isLoading, error }: { forecast: ForecastGrid
     { label: '海平面', value: `${tideName(forecast.water.tide)} ${forecast.marine.tideHeightM} 米`, note: `Open-Meteo 提供 sea_level_height_msl，可作为潮位趋势参考；水流方向 ${forecast.water.currentDirDeg} 度。` },
     { label: '水温', value: `${forecast.water.sstC} C`, note: `${forecast.water.clarity}。Open-Meteo Marine API 提供海表温度，不提供水色/能见度。` },
   ]
+  const apiSources = forecast.apiSources ?? []
   return (
     <div className="panel detail-panel">
       <div className="detail-top">
@@ -692,15 +755,22 @@ function ForecastDetail({ forecast, isLoading, error }: { forecast: ForecastGrid
       <div className="stats-grid">
         <StatCard icon={Wind} label="风" value={`${forecast.weather.windKts} 节`} detail={windDirectionName(forecast.weather.windDir)} />
         <StatCard icon={Waves} label="浪" value={`${forecast.marine.waveM} 米`} detail={`${forecast.marine.wavePeriodS} 秒周期`} />
-        <StatCard icon={Gauge} label="海流" value={`${forecast.water.currentKts} 节`} detail={tideName(forecast.water.tide)} />
+        <StatCard icon={Gauge} label="海流" value={`${forecast.water.currentKts} 节`} detail={`${forecast.water.currentDirDeg} 度 / ${tideName(forecast.water.tide)}`} />
         <StatCard icon={ThermometerSun} label="水温" value={`${forecast.water.sstC} C`} detail={forecast.water.clarity} />
       </div>
       <div className="current-row">
         <CurrentArrow degrees={forecast.water.currentDirDeg} />
-        <span>点击坐标：{forecast.lat.toFixed(3)}, {forecast.lng.toFixed(3)}。海流方向 {forecast.water.currentDirDeg} 度。{forecast.fish.tactic}</span>
+        <span>{forecast.lat.toFixed(3)}, {forecast.lng.toFixed(3)} · {forecast.weather.condition} · 气压 {forecast.marine.pressureHpa} hPa · 降水 {forecast.marine.precipMm} mm · {forecast.fish.tactic}</span>
       </div>
       <div className="accuracy-warning">
-        {isLoading ? '正在请求真实天气和海洋预报...' : error ? `接口错误：${error}` : '数据来自 Open-Meteo Forecast API 与 Marine API。它是模型预报，不是航海保证；真实出海仍需核对官方海况、潮汐、VHF 和当地法规。'}
+        {isLoading ? '正在请求真实天气、海洋、空气质量、NOAA 与 NWS 数据...' : error ? `接口错误：${error}` : '免费 API 已实时聚合；模型和站点数据均非航海保证，出海前仍需核对官方海况、潮汐、VHF 和当地法规。'}
+      </div>
+      <div className="api-source-strip">
+        {apiSources.map((source) => (
+          <span className={`source-${source.status}`} key={source.name} title={source.detail}>
+            {source.name}
+          </span>
+        ))}
       </div>
       <div className="analysis-list">
         <div className="mini-title"><Gauge size={18} /><strong>点击点详情</strong></div>
@@ -924,13 +994,9 @@ function App() {
   }, [])
 
   useEffect(() => {
-    loadAppData()
-      .then((loaded) => {
+    Promise.all([loadAppData(), fetchRealForecast(defaultCenter[0], defaultCenter[1])])
+      .then(([loaded, forecast]) => {
         setData(loaded)
-        setSelected(sampledForecast(loaded.forecastGrid, defaultCenter[0], defaultCenter[1]))
-        return fetchRealForecast(defaultCenter[0], defaultCenter[1])
-      })
-      .then((forecast) => {
         setSelected(forecast)
       })
       .catch((reason: Error) => setError(reason.message))
@@ -945,7 +1011,7 @@ function App() {
     return <div className="loading-state"><AlertTriangle size={28} /><h1>数据加载失败</h1><p>{error}</p></div>
   }
   if (!data || !selected) {
-    return <div className="loading-state"><RefreshCcw size={28} className="spin" /><h1>正在加载全区域海况网格</h1></div>
+    return <div className="loading-state"><RefreshCcw size={28} className="spin" /><h1>正在加载真实免费 API 海况</h1></div>
   }
 
   return (

@@ -60,6 +60,13 @@ export type MarinePointForecast = {
     waveM?: number
     tideHeightM?: number
   }>
+  apiSources?: ApiSourceStatus[]
+}
+
+export type ApiSourceStatus = {
+  name: string
+  status: 'ok' | 'limited' | 'failed' | 'skipped'
+  detail: string
 }
 
 export type ForecastGridCell = MarinePointForecast & {

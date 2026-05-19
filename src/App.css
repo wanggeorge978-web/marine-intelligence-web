@@ -241,7 +241,7 @@
 }
 
 .windy-bottom-sheet {
-  max-height: 56vh;
+  max-height: 28vh;
   overflow: auto;
 }
 
@@ -250,16 +250,57 @@
   border-radius: 0;
   box-shadow: none;
   background: transparent;
-  padding: 14px 18px 10px;
+  padding: 8px 22px 6px;
 }
 
 .windy-bottom-sheet .detail-top {
   align-items: center;
 }
 
+.windy-bottom-sheet .detail-top h2 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.15;
+}
+
+.windy-bottom-sheet .eyebrow {
+  display: none;
+}
+
+.windy-bottom-sheet .score-pill {
+  min-width: 58px;
+  padding: 6px 8px;
+}
+
+.windy-bottom-sheet .score-pill strong {
+  font-size: 24px;
+}
+
 .windy-bottom-sheet .stats-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin: 8px 0;
+  gap: 8px;
+  margin: 6px 0;
+}
+
+.windy-bottom-sheet .stat-card {
+  min-height: 52px;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  column-gap: 8px;
+  padding: 7px 10px;
+}
+
+.windy-bottom-sheet .stat-card svg {
+  grid-row: span 3;
+}
+
+.windy-bottom-sheet .stat-card strong {
+  font-size: 15px;
+}
+
+.windy-bottom-sheet .stat-card span,
+.windy-bottom-sheet .stat-card small {
+  line-height: 1.15;
 }
 
 .windy-bottom-sheet .analysis-list {
@@ -271,17 +312,57 @@
 }
 
 .accuracy-warning {
-  margin-top: 8px;
-  padding: 8px 10px;
+  margin-top: 5px;
+  padding: 6px 10px;
   border-radius: 8px;
   color: #6d3c00;
   background: #fff0c7;
-  font-size: 13px;
-  line-height: 1.45;
+  font-size: 12px;
+  line-height: 1.3;
 }
 
 .windy-bottom-sheet .current-row {
-  padding: 9px 10px;
+  padding: 6px 10px;
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.api-source-strip {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.api-source-strip span {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border-radius: 999px;
+  color: #173238;
+  background: #eaf2f1;
+  border: 1px solid #cbdcda;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.api-source-strip .source-ok {
+  color: #0b4f48;
+  background: #dff5ee;
+  border-color: #9cd9c7;
+}
+
+.api-source-strip .source-limited,
+.api-source-strip .source-skipped {
+  color: #6d4b00;
+  background: #fff3cf;
+  border-color: #e6c46a;
+}
+
+.api-source-strip .source-failed {
+  color: #7a1d1d;
+  background: #ffe3e3;
+  border-color: #eda7a7;
 }
 
 .timeline-days {
@@ -291,22 +372,22 @@
 }
 
 .timeline-days span {
-  padding: 8px 12px;
+  padding: 5px 12px;
   border-right: 1px solid #d8e3df;
   color: #485f65;
-  font-size: 16px;
+  font-size: 14px;
 }
 
 .meteo-grid {
   display: grid;
-  grid-template-columns: 92px repeat(6, minmax(70px, 1fr));
+  grid-template-columns: 80px repeat(8, minmax(62px, 1fr));
   align-items: center;
-  min-width: 760px;
+  min-width: 720px;
   overflow-x: auto;
 }
 
 .meteo-grid > * {
-  min-height: 26px;
+  min-height: 22px;
   display: grid;
   place-items: center;
   border-right: 1px solid rgba(216, 227, 223, 0.75);
@@ -315,9 +396,9 @@
 
 .meteo-grid .row-label {
   justify-content: end;
-  padding-right: 12px;
+  padding-right: 10px;
   color: #8a9699;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .meteo-grid b {
@@ -1271,6 +1352,7 @@ select {
   .windy-timeline,
   .windy-bottom-sheet {
     overflow-x: auto;
+    max-height: 42vh;
   }
 
   .timeline-days {
