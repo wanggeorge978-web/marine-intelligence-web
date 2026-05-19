@@ -33,6 +33,7 @@ import type {
   AlbacoreFeatureProperties,
   ApiSourceStatus,
   AppData,
+  CanadianStationData,
   ForecastGridCell,
   MarinePointForecast,
   PageId,
@@ -317,6 +318,31 @@ type NoaaStation = {
   lng: number
 }
 
+type CanadaTimeSeries = {
+  code: string
+  id: string
+  nameEn?: string
+  latitude?: number
+  longitude?: number
+}
+
+type CanadaStation = {
+  id: string
+  code: string
+  officialName: string
+  latitude: number
+  longitude: number
+  operating: boolean
+  type: string
+  timeSeries: CanadaTimeSeries[]
+}
+
+type CanadaDataPoint = {
+  eventDate: string
+  qcFlagCode?: string
+  value: number
+}
+
 type NoaaPrediction = {
   station: NoaaStation
   distanceKm: number
@@ -337,11 +363,14 @@ type FreeApiExtras = {
   }
   noaaTide?: NoaaPrediction
   noaaCurrent?: NoaaCurrentPrediction
+  canadaStations?: CanadianStationData
   nwsAlerts?: Array<{ event?: string; severity?: string }>
 }
 
 let noaaWaterLevelStationsPromise: Promise<NoaaStation[]> | null = null
 let noaaCurrentStationsPromise: Promise<NoaaStation[]> | null = null
+let canadaWaterStationsPromise: Promise<CanadaStation[]> | null = null
+let canadaCurrentStationsPromise: Promise<CanadaStation[]> | null = null
 
 function todayYmd() {
   return new Date().toISOString().slice(0, 10).replaceAll('-', '')
@@ -375,10 +404,48 @@ async function fetchNoaaStations(type: 'waterlevels' | 'currentpredictions') {
   return (data.stations ?? []).filter((station) => Number.isFinite(station.lat) && Number.isFinite(station.lng))
 }
 
+async function fetchCanadaStations(timeSeriesCode: string) {
+  const url = `https://api-sine.dfo-mpo.gc.ca/api/v1/stations?time-series-code=${timeSeriesCode}`
+  const data = await fetchJsonWithTimeout<CanadaStation[]>(url, 10000)
+  return data.filter((station) => Number.isFinite(station.latitude) && Number.isFinite(station.longitude))
+}
+
+async function fetchCanadaWaterStations() {
+  const [observed, predicted] = await Promise.all([
+    fetchCanadaStations('wlo'),
+    fetchCanadaStations('wlp'),
+  ])
+  const byId = new globalThis.Map<string, CanadaStation>()
+  observed.concat(predicted).forEach((station) => byId.set(station.id, station))
+  return [...byId.values()]
+}
+
+async function fetchCanadaCurrentStations() {
+  const [observedSpeed, predictedSpeed, events] = await Promise.all([
+    fetchCanadaStations('wcs1').catch((): CanadaStation[] => []),
+    fetchCanadaStations('wcsp1').catch((): CanadaStation[] => []),
+    fetchCanadaStations('wcp1-events').catch((): CanadaStation[] => []),
+  ])
+  const byId = new globalThis.Map<string, CanadaStation>()
+  observedSpeed.concat(predictedSpeed, events).forEach((station) => byId.set(station.id, station))
+  return [...byId.values()]
+}
+
 function nearestStation(stations: NoaaStation[], lat: number, lng: number, maxKm: number): { station: NoaaStation; distanceKm: number } | null {
   let best: { station: NoaaStation; distanceKm: number } | null = null
   for (const station of stations) {
     const distanceKm = haversineKm({ lat, lng }, station)
+    if (distanceKm <= maxKm && (!best || distanceKm < best.distanceKm)) {
+      best = { station, distanceKm }
+    }
+  }
+  return best
+}
+
+function nearestCanadaStation(stations: CanadaStation[], lat: number, lng: number, maxKm: number): { station: CanadaStation; distanceKm: number } | null {
+  let best: { station: CanadaStation; distanceKm: number } | null = null
+  for (const station of stations) {
+    const distanceKm = haversineKm({ lat, lng }, { lat: station.latitude, lng: station.longitude })
     if (distanceKm <= maxKm && (!best || distanceKm < best.distanceKm)) {
       best = { station, distanceKm }
     }
@@ -395,6 +462,99 @@ function nearestTimedItem<T extends { t?: string; Time?: string }>(items: T[] = 
     if (!best || Math.abs(itemTime - now) < Math.abs(bestTime - now)) return item
     return best
   }, undefined)
+}
+
+function nearestCanadaDataPoint(items: CanadaDataPoint[] = []) {
+  const now = Date.now()
+  return items.reduce<CanadaDataPoint | undefined>((best, item) => {
+    const itemTime = new Date(item.eventDate).getTime()
+    const bestTime = new Date(best?.eventDate ?? '').getTime()
+    if (!Number.isFinite(itemTime)) return best
+    if (!best || Math.abs(itemTime - now) < Math.abs(bestTime - now)) return item
+    return best
+  }, undefined)
+}
+
+function utcIso(hoursFromNow: number) {
+  return new Date(Date.now() + hoursFromNow * 60 * 60 * 1000).toISOString().replace(/\.\d{3}Z$/, 'Z')
+}
+
+function hasTimeSeries(station: CanadaStation, code: string) {
+  return station.timeSeries.some((series) => series.code === code)
+}
+
+async function fetchCanadaStationSeries(stationId: string, code: string, fromHours: number, toHours: number, resolution = 'SIXTY_MINUTES') {
+  const params = new URLSearchParams({
+    'time-series-code': code,
+    from: utcIso(fromHours),
+    to: utcIso(toHours),
+    resolution,
+  })
+  return fetchJsonWithTimeout<CanadaDataPoint[]>(
+    `https://api-sine.dfo-mpo.gc.ca/api/v1/stations/${stationId}/data?${params}`,
+    9000,
+  )
+}
+
+async function fetchCanadaWaterReading(lat: number, lng: number) {
+  canadaWaterStationsPromise ??= fetchCanadaWaterStations()
+  const stations = await canadaWaterStationsPromise
+  const nearest = nearestCanadaStation(stations, lat, lng, 250)
+  if (!nearest) return undefined
+  const { station, distanceKm } = nearest
+  const [observed, prediction] = await Promise.all([
+    hasTimeSeries(station, 'wlo') ? fetchCanadaStationSeries(station.id, 'wlo', -6, 1).then(nearestCanadaDataPoint).catch(() => undefined) : Promise.resolve(undefined),
+    hasTimeSeries(station, 'wlp') ? fetchCanadaStationSeries(station.id, 'wlp', -1, 12).then(nearestCanadaDataPoint).catch(() => undefined) : Promise.resolve(undefined),
+  ])
+  if (!observed && !prediction) return undefined
+  return {
+    stationCode: station.code,
+    stationName: station.officialName,
+    distanceKm,
+    observed: observed ? { value: observed.value, time: observed.eventDate, qcFlagCode: observed.qcFlagCode } : undefined,
+    prediction: prediction ? { value: prediction.value, time: prediction.eventDate, qcFlagCode: prediction.qcFlagCode } : undefined,
+  }
+}
+
+async function fetchCanadaCurrentReading(lat: number, lng: number) {
+  canadaCurrentStationsPromise ??= fetchCanadaCurrentStations()
+  const stations = await canadaCurrentStationsPromise
+  const nearest = nearestCanadaStation(stations, lat, lng, 140)
+  if (!nearest) return undefined
+  const { station, distanceKm } = nearest
+  const [observedSpeed, observedDirection, predictedSpeed, predictedDirection] = await Promise.all([
+    hasTimeSeries(station, 'wcs1') ? fetchCanadaStationSeries(station.id, 'wcs1', -6, 1).then(nearestCanadaDataPoint).catch(() => undefined) : Promise.resolve(undefined),
+    hasTimeSeries(station, 'wcd1') ? fetchCanadaStationSeries(station.id, 'wcd1', -6, 1).then(nearestCanadaDataPoint).catch(() => undefined) : Promise.resolve(undefined),
+    hasTimeSeries(station, 'wcsp1') ? fetchCanadaStationSeries(station.id, 'wcsp1', -1, 12).then(nearestCanadaDataPoint).catch(() => undefined) : Promise.resolve(undefined),
+    hasTimeSeries(station, 'wcdp1') ? fetchCanadaStationSeries(station.id, 'wcdp1', -1, 12).then(nearestCanadaDataPoint).catch(() => undefined) : Promise.resolve(undefined),
+  ])
+  if (!observedSpeed && !predictedSpeed) return undefined
+  return {
+    stationCode: station.code,
+    stationName: station.officialName,
+    distanceKm,
+    observed: observedSpeed ? {
+      value: observedSpeed.value,
+      directionDeg: observedDirection?.value,
+      time: observedSpeed.eventDate,
+      qcFlagCode: observedSpeed.qcFlagCode,
+    } : undefined,
+    prediction: predictedSpeed ? {
+      value: predictedSpeed.value,
+      directionDeg: predictedDirection?.value,
+      time: predictedSpeed.eventDate,
+      qcFlagCode: predictedSpeed.qcFlagCode,
+    } : undefined,
+  }
+}
+
+async function fetchCanadaStationData(lat: number, lng: number): Promise<CanadianStationData | undefined> {
+  const [waterLevel, current] = await Promise.all([
+    fetchCanadaWaterReading(lat, lng),
+    fetchCanadaCurrentReading(lat, lng),
+  ])
+  if (!waterLevel && !current) return undefined
+  return { waterLevel, current }
 }
 
 async function fetchOpenMeteoAirQuality(lat: number, lng: number) {
@@ -482,8 +642,9 @@ async function fetchNwsAlerts(lat: number, lng: number) {
 
 async function fetchFreeApiExtras(lat: number, lng: number): Promise<FreeApiExtras> {
   const extras: FreeApiExtras = { sources: [] }
-  const [airQuality, noaaTide, noaaCurrent, nwsAlerts] = await Promise.allSettled([
+  const [airQuality, canadaStations, noaaTide, noaaCurrent, nwsAlerts] = await Promise.allSettled([
     fetchOpenMeteoAirQuality(lat, lng),
+    fetchCanadaStationData(lat, lng),
     fetchNoaaTidePrediction(lat, lng),
     fetchNoaaCurrentPrediction(lat, lng),
     fetchNwsAlerts(lat, lng),
@@ -494,6 +655,23 @@ async function fetchFreeApiExtras(lat: number, lng: number): Promise<FreeApiExtr
     extras.sources.push({ name: 'Open-Meteo Air Quality', status: 'ok', detail: `AQI ${airQuality.value.usAqi ?? 'N/A'} / PM2.5 ${airQuality.value.pm25 ?? 'N/A'}` })
   } else {
     extras.sources.push({ name: 'Open-Meteo Air Quality', status: 'failed', detail: '空气质量接口未返回' })
+  }
+
+  if (canadaStations.status === 'fulfilled' && canadaStations.value) {
+    extras.canadaStations = canadaStations.value
+    const waterName = canadaStations.value.waterLevel?.stationName
+    const currentName = canadaStations.value.current?.stationName
+    extras.sources.push({
+      name: 'DFO/CHS Canada Stations',
+      status: 'ok',
+      detail: [waterName ? `水位 ${waterName}` : '', currentName ? `潮流 ${currentName}` : ''].filter(Boolean).join(' / '),
+    })
+  } else {
+    extras.sources.push({
+      name: 'DFO/CHS Canada Stations',
+      status: canadaStations.status === 'rejected' ? 'failed' : 'limited',
+      detail: '附近未命中加拿大官方水位/潮流站',
+    })
   }
 
   if (noaaTide.status === 'fulfilled' && noaaTide.value) {
@@ -554,7 +732,8 @@ async function fetchRealForecast(lng: number, lat: number): Promise<ForecastGrid
   const waveM = pickMarineHeight(marine.current?.wave_height, marine.current?.wind_wave_height, marine.current?.swell_wave_height)
   const windKts = Number((weather.current?.wind_speed_10m ?? 0).toFixed(1))
   const seaLevel = Number((marine.current?.sea_level_height_msl ?? 0).toFixed(2))
-  const bestTideHeight = extras.noaaTide?.value ?? seaLevel
+  const canadaTideHeight = extras.canadaStations?.waterLevel?.prediction?.value ?? extras.canadaStations?.waterLevel?.observed?.value
+  const bestTideHeight = canadaTideHeight ?? extras.noaaTide?.value ?? seaLevel
   const sst = Number((marine.current?.sea_surface_temperature ?? marine.hourly?.sea_surface_temperature?.[marineIndex] ?? 0).toFixed(1))
   const currentDirDeg = Math.round(marine.current?.ocean_current_direction ?? 0)
   const windDirDeg = Math.round(weather.current?.wind_direction_10m ?? weather.hourly?.wind_direction_10m?.[weatherIndex] ?? 0)
@@ -621,10 +800,11 @@ async function fetchRealForecast(lng: number, lat: number): Promise<ForecastGrid
     fish: {
       target: '按真实天气/海况判断目标鱼',
       biteWindow: '查看下方分时预测',
-      tactic: `此点已接入 Open-Meteo 天气/海洋/空气质量，NOAA CO-OPS 潮位/潮流站，以及 NWS 美国天气预警。海流速度使用 Open-Meteo 海洋模型；NOAA 潮流站只作为附近站点参考，不覆盖点击点海流。`,
+      tactic: `此点已接入 Open-Meteo 天气/海洋/空气质量、加拿大 DFO/CHS 水位与潮流站、NOAA CO-OPS、NWS。海流速度使用 Open-Meteo 海洋模型；加拿大/NOAA 潮流站只作为附近站点参考，不覆盖点击点海流。`,
       risk: '免费 API 有区域覆盖和频率限制；真实出海仍需核对官方海况、潮汐、VHF 和当地法规。',
     },
     timeline,
+    canadianStations: extras.canadaStations,
     apiSources: [
       { name: 'Open-Meteo Forecast', status: 'ok', detail: '天气、风、气压、降水' },
       { name: 'Open-Meteo Marine', status: 'ok', detail: '浪、海流、海表温度、海平面' },
@@ -945,6 +1125,23 @@ function MapView({
   )
 }
 
+function formatStationTime(value?: string) {
+  if (!value) return '无时间'
+  return new Date(value).toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function qcName(code?: string) {
+  if (code === '1') return 'QC 通过'
+  if (code === '2') return 'QC 未评估'
+  if (code === '3') return 'QC 可疑'
+  return 'QC 未知'
+}
+
 function ForecastDetail({ forecast, isLoading, error }: { forecast: ForecastGridCell; isLoading?: boolean; error?: string | null }) {
   const breakdown = [
     { label: '天气', value: `${forecast.weather.condition} / ${forecast.weather.airTempC} C`, note: `${pressureName(forecast.weather.pressureTrend)}，气压 ${forecast.marine.pressureHpa} hPa，降水 ${forecast.marine.precipMm} mm。` },
@@ -954,6 +1151,7 @@ function ForecastDetail({ forecast, isLoading, error }: { forecast: ForecastGrid
     { label: '水温', value: `${forecast.water.sstC} C`, note: `${forecast.water.clarity}。Open-Meteo Marine API 提供海表温度，不提供水色/能见度。` },
   ]
   const apiSources = forecast.apiSources ?? []
+  const canada = forecast.canadianStations
   return (
     <div className="panel detail-panel">
       <div className="detail-top">
@@ -969,6 +1167,34 @@ function ForecastDetail({ forecast, isLoading, error }: { forecast: ForecastGrid
         <StatCard icon={Gauge} label="海流" value={`${forecast.water.currentKts} 节`} detail={`${forecast.water.currentDirDeg} 度 / ${tideName(forecast.water.tide)}`} tone={currentTone(forecast.water.currentKts)} />
         <StatCard icon={ThermometerSun} label="水温" value={`${forecast.water.sstC} C`} detail={forecast.water.clarity} tone={sstTone(forecast.water.sstC)} />
       </div>
+      {canada && (
+        <div className="canada-station-panel">
+          <div className="station-header">
+            <strong>加拿大 DFO/CHS 官方站点</strong>
+            <span>点击点附近观测/预测</span>
+          </div>
+          <div className="station-grid">
+            {canada.waterLevel && (
+              <div className="station-card">
+                <span>水位 / 潮汐</span>
+                <strong>{canada.waterLevel.stationName}</strong>
+                <small>{canada.waterLevel.stationCode} · {Math.round(canada.waterLevel.distanceKm)} km</small>
+                <p>观测：{canada.waterLevel.observed?.value?.toFixed(2) ?? '—'} m · {formatStationTime(canada.waterLevel.observed?.time)} · {qcName(canada.waterLevel.observed?.qcFlagCode)}</p>
+                <p>预测：{canada.waterLevel.prediction?.value?.toFixed(2) ?? '—'} m · {formatStationTime(canada.waterLevel.prediction?.time)} · {qcName(canada.waterLevel.prediction?.qcFlagCode)}</p>
+              </div>
+            )}
+            {canada.current && (
+              <div className="station-card">
+                <span>潮流站</span>
+                <strong>{canada.current.stationName}</strong>
+                <small>{canada.current.stationCode} · {Math.round(canada.current.distanceKm)} km</small>
+                <p>观测：{canada.current.observed?.value?.toFixed(1) ?? '—'} kt · {canada.current.observed?.directionDeg?.toFixed(0) ?? '—'}° · {formatStationTime(canada.current.observed?.time)}</p>
+                <p>预测：{canada.current.prediction?.value?.toFixed(1) ?? '—'} kt · {canada.current.prediction?.directionDeg?.toFixed(0) ?? '—'}° · {formatStationTime(canada.current.prediction?.time)}</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       <div className="current-row">
         <CurrentArrow degrees={forecast.water.currentDirDeg} />
         <span>{forecast.lat.toFixed(3)}, {forecast.lng.toFixed(3)} · {forecast.weather.condition} · 气压 {forecast.marine.pressureHpa} hPa · 降水 {forecast.marine.precipMm} mm · {forecast.fish.tactic}</span>

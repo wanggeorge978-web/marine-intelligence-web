@@ -71,6 +71,29 @@ export type ApiSourceStatus = {
   detail: string
 }
 
+export type OfficialStationReading = {
+  stationCode: string
+  stationName: string
+  distanceKm: number
+  observed?: {
+    value?: number
+    directionDeg?: number
+    time: string
+    qcFlagCode?: string
+  }
+  prediction?: {
+    value?: number
+    directionDeg?: number
+    time: string
+    qcFlagCode?: string
+  }
+}
+
+export type CanadianStationData = {
+  waterLevel?: OfficialStationReading
+  current?: OfficialStationReading
+}
+
 export type ForecastGridCell = MarinePointForecast & {
   gridX: number
   gridY: number
@@ -84,6 +107,7 @@ export type ForecastGridCell = MarinePointForecast & {
     precipMm: number
     pressureHpa: number
   }
+  canadianStations?: CanadianStationData
 }
 
 export type TaskStatus = {

@@ -354,7 +354,7 @@
 }
 
 .windy-bottom-sheet {
-  max-height: 28vh;
+  max-height: 34vh;
   overflow: auto;
 }
 
@@ -432,6 +432,64 @@
   background: #fff0c7;
   font-size: 12px;
   line-height: 1.3;
+}
+
+.canada-station-panel {
+  margin-top: 6px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(232, 242, 246, 0.92);
+  border: 1px solid #c9dde2;
+}
+
+.station-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+  color: #18343c;
+  font-size: 12px;
+}
+
+.station-header span {
+  color: #567077;
+}
+
+.station-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.station-card {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 7px 9px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.82);
+  border-left: 5px solid #0e8f8f;
+}
+
+.station-card span,
+.station-card small,
+.station-card p {
+  color: #587078;
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.station-card strong {
+  overflow: hidden;
+  color: #17282d;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.station-card p {
+  margin: 0;
 }
 
 .windy-bottom-sheet .current-row {
