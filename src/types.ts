@@ -57,7 +57,31 @@ export type MarinePointForecast = {
     bite: number
     windKts: number
     currentKts: number
+    waveM?: number
+    tideHeightM?: number
   }>
+}
+
+export type ForecastGridCell = MarinePointForecast & {
+  gridX: number
+  gridY: number
+  marine: {
+    waveM: number
+    wavePeriodS: number
+    swellDirDeg: number
+    tideHeightM: number
+    salinityPsu: number
+    visibilityKm: number
+    precipMm: number
+    pressureHpa: number
+  }
+}
+
+export type TaskStatus = {
+  id: string
+  title: string
+  status: 'done' | 'mvp' | 'planned'
+  detail: string
 }
 
 export type RuleRecord = {
@@ -111,9 +135,11 @@ export type BluewaterCell = {
 export type AppData = {
   manifest: DataManifest
   forecasts: MarinePointForecast[]
+  forecastGrid: ForecastGridCell[]
   rules: RuleRecord[]
   warnings: GeoJSON.FeatureCollection<GeoJSON.Geometry, WarningFeatureProperties>
   pfma: GeoJSON.FeatureCollection<GeoJSON.Geometry, { id: string; name: string }>
   albacore: GeoJSON.FeatureCollection<GeoJSON.Point, AlbacoreFeatureProperties>
   bluewater: BluewaterCell[]
+  tasks: TaskStatus[]
 }

@@ -4,6 +4,7 @@
   "description": "钓鱼天气、水流、潮汐、鱼情、规则、预警、蓝水和出海简报 MVP。",
   "start_url": "./#/map",
   "display": "standalone",
+  "scope": "./",
   "background_color": "#eef4f1",
   "theme_color": "#13272e",
   "icons": [

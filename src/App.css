@@ -241,6 +241,34 @@ p {
   background: #bfd7df;
 }
 
+.mode-bar {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid #d8e3df;
+  background: #f7faf8;
+}
+
+.mode-bar button {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid #cbdad7;
+  border-radius: 7px;
+  color: #28464d;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.mode-bar button.active {
+  color: #ffffff;
+  background: #0e8f8f;
+  border-color: #0e8f8f;
+}
+
 .map-canvas {
   width: 100%;
   height: 100%;
@@ -253,6 +281,28 @@ p {
 
 .compact {
   padding: 16px;
+}
+
+.panel-help {
+  margin-top: 10px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.legend-bar {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  margin: 12px 0;
+  color: #647a7e;
+  font-size: 12px;
+}
+
+.legend-bar div {
+  height: 10px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #2166ac, #1a9850, #f2b705, #d7191c);
 }
 
 .switch-row,
@@ -413,6 +463,19 @@ p {
   font-weight: 800;
 }
 
+.analysis-row.wide {
+  grid-template-columns: minmax(0, 1fr) minmax(96px, auto);
+}
+
+.analysis-row.wide > span {
+  padding: 0 10px;
+  white-space: nowrap;
+}
+
+.timeline-row.forecast {
+  grid-template-columns: 48px minmax(0, 1fr) 34px minmax(210px, 1fr);
+}
+
 meter {
   width: 100%;
   height: 10px;
@@ -501,19 +564,22 @@ meter {
 }
 
 .status.open,
-.status.ok {
+.status.ok,
+.status.done {
   color: #126338;
   background: #dff4e8;
 }
 
 .status.restricted,
-.status.demo {
+.status.demo,
+.status.mvp {
   color: #6f5106;
   background: #fff0c7;
 }
 
 .status.closed,
-.status.stale {
+.status.stale,
+.status.planned {
   color: #8b1e1e;
   background: #fde2de;
 }
@@ -694,6 +760,34 @@ select {
   gap: 14px;
 }
 
+.task-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.task-card {
+  padding: 14px;
+}
+
+.task-card > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.task-card h2 {
+  margin-bottom: 6px;
+  font-size: 16px;
+}
+
+.task-card p {
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .source-row {
   display: grid;
   grid-template-columns: minmax(180px, 1fr) minmax(160px, 0.7fr) 80px minmax(220px, 1fr);
@@ -739,7 +833,8 @@ select {
   .page-grid,
   .bluewater-grid,
   .brief-grid,
-  .form-panel {
+  .form-panel,
+  .task-grid {
     grid-template-columns: 1fr;
   }
 
@@ -769,7 +864,8 @@ select {
   .table-grid,
   .source-row,
   .timeline-row,
-  .route-result-grid {
+  .route-result-grid,
+  .mode-bar {
     grid-template-columns: 1fr;
   }
 
