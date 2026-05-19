@@ -1218,6 +1218,7 @@ function MapView({
       )}
 
       <div className="windy-bottom-sheet">
+        <div className="bottom-sheet-grip" aria-hidden="true" />
         <ForecastDetail forecast={selected} isLoading={isLoadingPoint} error={pointError} />
         <div className="timeline-days">
           {['周二 19', '周三 20', '周四 21', '周五 22', '周六 23', '周日 24'].map((day) => <span key={day}>{day}</span>)}
@@ -1270,6 +1271,18 @@ function ForecastDetail({ forecast, isLoading, error }: { forecast: ForecastGrid
   ]
   const apiSources = forecast.apiSources ?? []
   const canada = forecast.canadianStations
+  const okSourceCount = apiSources.filter((source) => source.status === 'ok').length
+  const sourceStatusText = isLoading
+    ? '正在更新 API'
+    : error
+      ? '接口有错误'
+      : `${okSourceCount}/${apiSources.length || 0} 个 API 正常`
+  const waterLevelSummary = canada?.waterLevel
+    ? `${canada.waterLevel.stationName} ${canada.waterLevel.prediction?.value?.toFixed(2) ?? canada.waterLevel.observed?.value?.toFixed(2) ?? '--'} m`
+    : '无附近水位站'
+  const currentStationSummary = canada?.current
+    ? `${canada.current.stationName} ${canada.current.prediction?.value?.toFixed(1) ?? canada.current.observed?.value?.toFixed(1) ?? '--'} kt`
+    : '无附近潮流站'
   return (
     <div className="panel detail-panel">
       <div className="detail-top">
@@ -1286,11 +1299,14 @@ function ForecastDetail({ forecast, isLoading, error }: { forecast: ForecastGrid
         <StatCard icon={ThermometerSun} label="水温" value={`${forecast.water.sstC} C`} detail={forecast.water.clarity} tone={sstTone(forecast.water.sstC)} />
       </div>
       {canada && (
-        <div className="canada-station-panel">
-          <div className="station-header">
-            <strong>加拿大 DFO/CHS 官方站点</strong>
-            <span>点击点附近观测/预测</span>
-          </div>
+        <details className="compact-details canada-station-panel">
+          <summary>
+            <div>
+              <strong>加拿大 DFO/CHS 官方站点</strong>
+              <span>{waterLevelSummary} · {currentStationSummary}</span>
+            </div>
+            <ChevronRight className="summary-icon" size={18} />
+          </summary>
           <div className="station-grid">
             {canada.waterLevel && (
               <div className="station-card">
@@ -1311,22 +1327,31 @@ function ForecastDetail({ forecast, isLoading, error }: { forecast: ForecastGrid
               </div>
             )}
           </div>
-        </div>
+        </details>
       )}
-      <div className="current-row">
-        <CurrentArrow degrees={forecast.water.currentDirDeg} />
-        <span>{forecast.lat.toFixed(3)}, {forecast.lng.toFixed(3)} · {forecast.weather.condition} · 气压 {forecast.marine.pressureHpa} hPa · 降水 {forecast.marine.precipMm} mm · {forecast.fish.tactic}</span>
-      </div>
-      <div className="accuracy-warning">
-        {isLoading ? '正在请求真实天气、海洋、空气质量、NOAA 与 NWS 数据...' : error ? `接口错误：${error}` : '免费 API 已实时聚合；模型和站点数据均非航海保证，出海前仍需核对官方海况、潮汐、VHF 和当地法规。'}
-      </div>
-      <div className="api-source-strip">
-        {apiSources.map((source) => (
-          <span className={`source-${source.status}`} key={source.name} title={source.detail}>
-            {source.name}
-          </span>
-        ))}
-      </div>
+      <details className="compact-details source-details">
+        <summary>
+          <div>
+            <strong>数据口径</strong>
+            <span>{sourceStatusText} · 模型海流和站点潮流分开显示</span>
+          </div>
+          <ChevronRight className="summary-icon" size={18} />
+        </summary>
+        <div className="current-row">
+          <CurrentArrow degrees={forecast.water.currentDirDeg} />
+          <span>{forecast.lat.toFixed(3)}, {forecast.lng.toFixed(3)} · {forecast.weather.condition} · 气压 {forecast.marine.pressureHpa} hPa · 降水 {forecast.marine.precipMm} mm · {forecast.fish.tactic}</span>
+        </div>
+        <div className="accuracy-warning">
+          {isLoading ? '正在请求真实天气、海洋、空气质量、NOAA 与 NWS 数据...' : error ? `接口错误：${error}` : '免费 API 已实时聚合；模型和站点数据均非航海保证，出海前仍需核对官方海况、潮汐、VHF 和当地法规。'}
+        </div>
+        <div className="api-source-strip">
+          {apiSources.map((source) => (
+            <span className={`source-${source.status}`} key={source.name} title={source.detail}>
+              {source.name}
+            </span>
+          ))}
+        </div>
+      </details>
       <div className="analysis-list">
         <div className="mini-title"><Gauge size={18} /><strong>点击点详情</strong></div>
         {breakdown.map((item) => (
