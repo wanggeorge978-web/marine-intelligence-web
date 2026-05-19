@@ -35,6 +35,7 @@ export type MarinePointForecast = {
     airTempC: number
     windKts: number
     windDir: string
+    windDirDeg?: number
     pressureTrend: 'rising' | 'steady' | 'falling'
   }
   water: {
@@ -56,6 +57,7 @@ export type MarinePointForecast = {
     time: string
     bite: number
     windKts: number
+    windDirDeg?: number
     currentKts: number
     waveM?: number
     tideHeightM?: number

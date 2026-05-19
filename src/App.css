@@ -35,17 +35,6 @@
   filter: saturate(1.2) contrast(1.04);
 }
 
-.forecast-color-wash {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  pointer-events: none;
-  background:
-    radial-gradient(circle at 50% 45%, var(--mode-soft) 0, var(--mode-soft) 16%, transparent 44%),
-    linear-gradient(180deg, transparent 0, rgba(10, 28, 34, 0.12) 100%);
-  mix-blend-mode: multiply;
-}
-
 .forecast-marker {
   width: 54px;
   height: 54px;
@@ -266,8 +255,8 @@
   right: 24px;
   bottom: 218px;
   z-index: 5;
-  width: 210px;
-  padding: 10px 12px;
+  width: 188px;
+  padding: 8px 10px;
   border-radius: 8px;
   color: #17282d;
   background: rgba(255, 255, 255, 0.92);
@@ -295,7 +284,7 @@
 
 .windy-color-legend i {
   display: block;
-  height: 10px;
+  height: 7px;
   border-radius: 999px;
   background: linear-gradient(90deg, #00c853 0%, #7ed321 26%, #ffd400 52%, #ff8f00 74%, #d7191c 100%);
 }
@@ -545,6 +534,23 @@
   height: 100%;
   color: var(--tone-ink, #111);
   background: color-mix(in srgb, var(--tone-color, #7ed321) 68%, #ffffff);
+  font-weight: 900;
+}
+
+.wind-dir-cell {
+  background: #f8fbfa;
+}
+
+.direction-arrow {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  color: #12363e;
+  background: #e6eeee;
+  font-size: 18px;
+  line-height: 1;
   font-weight: 900;
 }
 

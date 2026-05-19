@@ -253,8 +253,28 @@ function directionNameFromDegrees(degrees?: number) {
   return names[Math.round(degrees / 45) % 8]
 }
 
+function windDirectionDetail(degrees?: number) {
+  if (degrees === undefined || Number.isNaN(degrees)) return '未知风向'
+  return `${windDirectionName(directionNameFromDegrees(degrees))} ${Math.round(degrees)}°`
+}
+
 function kmhToKnots(value?: number) {
   return Number(((value ?? 0) * 0.539957).toFixed(1))
+}
+
+function pickMarineHeight(...values: Array<number | undefined>) {
+  const candidates = values.filter((value): value is number => value !== undefined && Number.isFinite(value) && value >= 0)
+  if (!candidates.length) return 0
+  const value = Math.max(...candidates)
+  const rounded = Number(value.toFixed(1))
+  if (value > 0 && rounded === 0) return 0.05
+  return rounded
+}
+
+function formatMeters(value?: number) {
+  if (value === undefined || !Number.isFinite(value)) return '—'
+  if (value > 0 && value < 0.1) return '<0.1'
+  return value.toFixed(1)
 }
 
 function trendFromPressure(hourly?: { pressure_msl?: number[] }) {
@@ -531,25 +551,30 @@ async function fetchRealForecast(lng: number, lat: number): Promise<ForecastGrid
   const weatherIndex = nearestHourlyIndex(weather.hourly?.time, weather.current?.time)
   const marineIndex = nearestHourlyIndex(marine.hourly?.time, marine.current?.time)
   const currentKts = kmhToKnots(marine.current?.ocean_current_velocity)
-  const waveM = Number((marine.current?.wave_height ?? 0).toFixed(1))
+  const waveM = pickMarineHeight(marine.current?.wave_height, marine.current?.wind_wave_height, marine.current?.swell_wave_height)
   const windKts = Number((weather.current?.wind_speed_10m ?? 0).toFixed(1))
   const seaLevel = Number((marine.current?.sea_level_height_msl ?? 0).toFixed(2))
-  const bestCurrentKts = extras.noaaCurrent?.value ?? currentKts
-  const bestCurrentDir = extras.noaaCurrent?.directionDeg ?? Math.round(marine.current?.ocean_current_direction ?? 0)
   const bestTideHeight = extras.noaaTide?.value ?? seaLevel
   const sst = Number((marine.current?.sea_surface_temperature ?? marine.hourly?.sea_surface_temperature?.[marineIndex] ?? 0).toFixed(1))
-  const score = Math.max(20, Math.min(95, Math.round(92 - Math.max(0, windKts - 10) * 2.2 - Math.max(0, waveM - 1.2) * 10 - Math.max(0, bestCurrentKts - 1.8) * 8)))
+  const currentDirDeg = Math.round(marine.current?.ocean_current_direction ?? 0)
+  const windDirDeg = Math.round(weather.current?.wind_direction_10m ?? weather.hourly?.wind_direction_10m?.[weatherIndex] ?? 0)
+  const score = Math.max(20, Math.min(95, Math.round(92 - Math.max(0, windKts - 10) * 2.2 - Math.max(0, waveM - 1.2) * 10 - Math.max(0, currentKts - 1.8) * 8)))
   const timeline = Array.from({ length: 8 }, (_, itemIndex) => {
     const weatherHour = weatherIndex + itemIndex * 3
     const marineHour = marineIndex + itemIndex * 3
     const tWind = Number((weather.hourly?.wind_speed_10m?.[weatherHour] ?? windKts).toFixed(1))
-    const tWave = Number((marine.hourly?.wave_height?.[marineHour] ?? waveM).toFixed(1))
+    const tWave = pickMarineHeight(
+      marine.hourly?.wave_height?.[marineHour],
+      marine.hourly?.wind_wave_height?.[marineHour],
+      marine.hourly?.swell_wave_height?.[marineHour],
+    )
     const tCurrent = kmhToKnots(marine.hourly?.ocean_current_velocity?.[marineHour])
     const tTide = Number((marine.hourly?.sea_level_height_msl?.[marineHour] ?? seaLevel).toFixed(2))
     return {
       time: (weather.hourly?.time?.[weatherHour] ?? marine.hourly?.time?.[marineHour] ?? '').slice(11, 16),
       bite: Math.max(5, Math.min(95, Math.round(score - Math.max(0, tWind - 12) * 2 - Math.max(0, tWave - 1.5) * 8))),
       windKts: tWind,
+      windDirDeg: Math.round(weather.hourly?.wind_direction_10m?.[weatherHour] ?? windDirDeg),
       currentKts: tCurrent,
       waveM: tWave,
       tideHeightM: tTide,
@@ -570,12 +595,13 @@ async function fetchRealForecast(lng: number, lat: number): Promise<ForecastGrid
       condition: weatherCodeName(weather.current?.weather_code),
       airTempC: Number((weather.current?.temperature_2m ?? weather.hourly?.temperature_2m?.[weatherIndex] ?? 0).toFixed(1)),
       windKts,
-      windDir: directionNameFromDegrees(weather.current?.wind_direction_10m),
+      windDir: directionNameFromDegrees(windDirDeg),
+      windDirDeg,
       pressureTrend: trendFromPressure(weather.hourly),
     },
     water: {
-      currentKts: bestCurrentKts,
-      currentDirDeg: bestCurrentDir,
+      currentKts,
+      currentDirDeg,
       swellM: Number((marine.current?.swell_wave_height ?? marine.current?.wave_height ?? 0).toFixed(1)),
       swellPeriodS: Number((marine.current?.wave_period ?? 0).toFixed(1)),
       tide: tideFromSeaLevel(marine.hourly),
@@ -595,7 +621,7 @@ async function fetchRealForecast(lng: number, lat: number): Promise<ForecastGrid
     fish: {
       target: '按真实天气/海况判断目标鱼',
       biteWindow: '查看下方分时预测',
-      tactic: `此点已接入 Open-Meteo 天气/海洋/空气质量，NOAA CO-OPS 潮位/潮流站，以及 NWS 美国天气预警。${extras.noaaCurrent ? '海流优先使用附近 NOAA 潮流站预测。' : '海流当前使用 Open-Meteo 海洋模型。'}`,
+      tactic: `此点已接入 Open-Meteo 天气/海洋/空气质量，NOAA CO-OPS 潮位/潮流站，以及 NWS 美国天气预警。海流速度使用 Open-Meteo 海洋模型；NOAA 潮流站只作为附近站点参考，不覆盖点击点海流。`,
       risk: '免费 API 有区域覆盖和频率限制；真实出海仍需核对官方海况、潮汐、VHF 和当地法规。',
     },
     timeline,
@@ -625,6 +651,14 @@ function CurrentArrow({ degrees }: { degrees: number }) {
       <path d="M12 20V4" />
       <path d="M6 10l6-6 6 6" />
     </svg>
+  )
+}
+
+function DirectionArrow({ degrees, label }: { degrees?: number; label: string }) {
+  return (
+    <span className="direction-arrow" title={label} style={{ transform: `rotate(${degrees ?? 0}deg)` }}>
+      ↑
+    </span>
   )
 }
 
@@ -836,7 +870,6 @@ function MapView({
   return (
     <section className={`windy-map-page ${toneClass(scoreRiskTone)} mode-${toneClass(activeTone)}`} style={mapStyleVars}>
       <div ref={mapNode} className="windy-map-canvas" />
-      <div className="forecast-color-wash" aria-hidden="true" />
 
       <div className="windy-topbar">
         <div className="windy-search">
@@ -896,10 +929,12 @@ function MapView({
           {selected.timeline.map((slot) => <b key={`t-${slot.time}`}>{slot.time}</b>)}
           <span className="row-label">天气</span>
           {selected.timeline.map((slot) => <span className={`meteo-tone ${toneClass(timelineTone(slot))}`} key={`w-${slot.time}`}>{slot.bite}</span>)}
+          <span className="row-label">风向</span>
+          {selected.timeline.map((slot) => <span className="wind-dir-cell" key={`dir-${slot.time}`}><DirectionArrow degrees={slot.windDirDeg} label={windDirectionDetail(slot.windDirDeg)} /></span>)}
           <span className="row-label">风 kt</span>
           {selected.timeline.map((slot) => <em className={toneClass(windTone(slot.windKts))} key={`wind-${slot.time}`}>{slot.windKts}</em>)}
           <span className="row-label">浪 m</span>
-          {selected.timeline.map((slot) => <em className={toneClass(waveTone(slot.waveM ?? 0))} key={`wave-${slot.time}`}>{slot.waveM}</em>)}
+          {selected.timeline.map((slot) => <em className={toneClass(waveTone(slot.waveM ?? 0))} key={`wave-${slot.time}`}>{formatMeters(slot.waveM)}</em>)}
           <span className="row-label">海流 kt</span>
           {selected.timeline.map((slot) => <em className={toneClass(currentTone(slot.currentKts))} key={`cur-${slot.time}`}>{slot.currentKts}</em>)}
           <span className="row-label">海平面 m</span>
@@ -913,7 +948,7 @@ function MapView({
 function ForecastDetail({ forecast, isLoading, error }: { forecast: ForecastGridCell; isLoading?: boolean; error?: string | null }) {
   const breakdown = [
     { label: '天气', value: `${forecast.weather.condition} / ${forecast.weather.airTempC} C`, note: `${pressureName(forecast.weather.pressureTrend)}，气压 ${forecast.marine.pressureHpa} hPa，降水 ${forecast.marine.precipMm} mm。` },
-    { label: '风浪', value: `${forecast.weather.windKts} 节 / ${forecast.marine.waveM} 米`, note: weatherInterpretation(forecast) },
+    { label: '风浪', value: `${forecast.weather.windKts} 节 / ${formatMeters(forecast.marine.waveM)} 米`, note: weatherInterpretation(forecast) },
     { label: '海流', value: `${forecast.water.currentKts} 节`, note: currentInterpretation(forecast) },
     { label: '海平面', value: `${tideName(forecast.water.tide)} ${forecast.marine.tideHeightM} 米`, note: `Open-Meteo 提供 sea_level_height_msl，可作为潮位趋势参考；水流方向 ${forecast.water.currentDirDeg} 度。` },
     { label: '水温', value: `${forecast.water.sstC} C`, note: `${forecast.water.clarity}。Open-Meteo Marine API 提供海表温度，不提供水色/能见度。` },
@@ -929,8 +964,8 @@ function ForecastDetail({ forecast, isLoading, error }: { forecast: ForecastGrid
         <div className={`score-pill ${toneClass(scoreTone(forecast.score))}`}><strong>{forecast.score}</strong><span>{scoreLabel(forecast.score)}</span></div>
       </div>
       <div className="stats-grid">
-        <StatCard icon={Wind} label="风" value={`${forecast.weather.windKts} 节`} detail={windDirectionName(forecast.weather.windDir)} tone={windTone(forecast.weather.windKts)} />
-        <StatCard icon={Waves} label="浪" value={`${forecast.marine.waveM} 米`} detail={`${forecast.marine.wavePeriodS} 秒周期`} tone={waveTone(forecast.marine.waveM)} />
+        <StatCard icon={Wind} label="风" value={`${forecast.weather.windKts} 节`} detail={windDirectionDetail(forecast.weather.windDirDeg)} tone={windTone(forecast.weather.windKts)} />
+        <StatCard icon={Waves} label="浪" value={`${formatMeters(forecast.marine.waveM)} 米`} detail={`${forecast.marine.wavePeriodS} 秒周期`} tone={waveTone(forecast.marine.waveM)} />
         <StatCard icon={Gauge} label="海流" value={`${forecast.water.currentKts} 节`} detail={`${forecast.water.currentDirDeg} 度 / ${tideName(forecast.water.tide)}`} tone={currentTone(forecast.water.currentKts)} />
         <StatCard icon={ThermometerSun} label="水温" value={`${forecast.water.sstC} C`} detail={forecast.water.clarity} tone={sstTone(forecast.water.sstC)} />
       </div>
@@ -964,7 +999,7 @@ function ForecastDetail({ forecast, isLoading, error }: { forecast: ForecastGrid
             <span>{slot.time}</span>
             <meter min="0" max="100" value={slot.bite} />
             <strong>{slot.bite}</strong>
-            <small>{slot.windKts} 节风 / {slot.waveM} 米浪 / {slot.currentKts} 节流 / 潮高 {slot.tideHeightM} 米</small>
+            <small>{slot.windKts} 节风 / {formatMeters(slot.waveM)} 米浪 / {slot.currentKts} 节流 / 潮高 {slot.tideHeightM} 米</small>
           </div>
         ))}
       </div>
