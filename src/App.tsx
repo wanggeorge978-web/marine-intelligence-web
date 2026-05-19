@@ -304,7 +304,7 @@ function StatCard({ icon: Icon, label, value, detail }: { icon: typeof Wind; lab
 
 function Shell({ page, setPage, children }: { page: PageId; setPage: (page: PageId) => void; children: React.ReactNode }) {
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${page === 'map' ? 'immersive-shell' : ''}`}>
       <aside className="sidebar">
         <a className="brand" href="#/map" onClick={() => setPage('map')}>
           <span className="brand-mark"><Waves size={22} /></span>
@@ -350,6 +350,7 @@ function MapView({
   const [showAreas, setShowAreas] = useState(true)
   const [showWarnings, setShowWarnings] = useState(true)
   const [showBluewater, setShowBluewater] = useState(true)
+  const [searchText, setSearchText] = useState('')
   const gridGeojson = useMemo(() => gridToGeoJson(data.forecastGrid, mode), [data.forecastGrid, mode])
   const activeMode = overlayModes.find((item) => item.id === mode) ?? overlayModes[0]
 
@@ -463,52 +464,99 @@ function MapView({
     }
   }, [selected])
 
+  function searchLocation() {
+    const parts = searchText
+      .split(/[,\s]+/)
+      .map((part) => Number(part))
+      .filter((value) => Number.isFinite(value))
+    if (parts.length >= 2) {
+      const [lat, lng] = Math.abs(parts[0]) <= 90 ? [parts[0], parts[1]] : [parts[1], parts[0]]
+      const forecast = sampledForecast(data.forecastGrid, lng, lat)
+      setSelected(forecast)
+      mapRef.current?.flyTo({ center: [lng, lat], zoom: 8.3, duration: 800 })
+    }
+  }
+
   return (
-    <section className="page-grid map-page">
-      <div className="panel map-panel">
-        <div className="panel-header">
-          <div>
-            <p className="eyebrow">全区域网格预报</p>
-            <h1>点击地图任意位置查看天气、风浪、水流、潮汐</h1>
-          </div>
-          <button className="icon-button" title="回到默认海域" onClick={() => mapRef.current?.flyTo({ center: defaultCenter, zoom: 7.2 })}>
-            <LocateFixed size={18} />
-          </button>
+    <section className="windy-map-page">
+      <div ref={mapNode} className="windy-map-canvas" />
+
+      <div className="windy-topbar">
+        <div className="windy-search">
+          <MapPin size={18} />
+          <input
+            value={searchText}
+            onChange={(event) => setSearchText(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') searchLocation()
+            }}
+            placeholder={`${selected.lat.toFixed(3)}, ${selected.lng.toFixed(3)}`}
+          />
+          <button title="定位到输入坐标" onClick={searchLocation}><LocateFixed size={18} /></button>
         </div>
-        <div className="mode-bar">
-          {overlayModes.map((item) => {
-            const Icon = item.icon
-            return (
-              <button className={mode === item.id ? 'active' : ''} key={item.id} onClick={() => setMode(item.id)}>
-                <Icon size={16} />
-                {item.label}
-              </button>
-            )
-          })}
+        <div className="windy-brand">
+          <span><Waves size={22} /></span>
+          <strong>海钓智能助手</strong>
         </div>
-        <div className="map-frame">
-          <div ref={mapNode} className="map-canvas" />
+        <div className="windy-actions">
+          <a href="#/data-status">T01-T22</a>
+          <a href="#/rules">规则</a>
         </div>
       </div>
 
-      <aside className="side-stack">
-        <div className="panel compact">
-          <div className="mini-title">
-            <Layers size={18} />
-            <strong>当前图层：{activeMode.label}</strong>
-          </div>
-          <div className="legend-bar">
-            <span>低</span>
-            <div />
-            <span>高</span>
-          </div>
-          <label className="switch-row"><span>PFMA 区域</span><input type="checkbox" checked={showAreas} onChange={(event) => setShowAreas(event.target.checked)} /></label>
-          <label className="switch-row"><span>预警范围</span><input type="checkbox" checked={showWarnings} onChange={(event) => setShowWarnings(event.target.checked)} /></label>
-          <label className="switch-row"><span>蓝水 / 金枪鱼热区</span><input type="checkbox" checked={showBluewater} onChange={(event) => setShowBluewater(event.target.checked)} /></label>
-          <p className="panel-help">地图任意点击都会用附近 4 个网格近似采样；正式版本可接入官方 grib/netCDF/GeoJSON 生成更细网格。</p>
-        </div>
+      <div className="windy-left-badges">
+        <div><strong>{selected.score}</strong><span>海钓评分</span></div>
+        <div><strong>{selected.weather.windKts}</strong><span>风 kt</span></div>
+        <div><strong>{selected.marine.waveM}</strong><span>浪 m</span></div>
+      </div>
+
+      <div className="windy-layer-rail">
+        <button className="menu-round" title="菜单"><Layers size={24} /></button>
+        {overlayModes.map((item) => {
+          const Icon = item.icon
+          return (
+            <button className={mode === item.id ? 'active' : ''} key={item.id} onClick={() => setMode(item.id)} title={item.label}>
+              <Icon size={20} />
+              <span>{item.label}</span>
+            </button>
+          )
+        })}
+      </div>
+
+      <div className="windy-detail">
         <ForecastDetail forecast={selected} />
-      </aside>
+      </div>
+
+      <div className="windy-layer-card">
+        <div className="mini-title">
+          <Layers size={18} />
+          <strong>{activeMode.label}</strong>
+        </div>
+        <div className="legend-bar"><span>低</span><div /><span>高</span></div>
+        <label className="switch-row"><span>PFMA</span><input type="checkbox" checked={showAreas} onChange={(event) => setShowAreas(event.target.checked)} /></label>
+        <label className="switch-row"><span>预警</span><input type="checkbox" checked={showWarnings} onChange={(event) => setShowWarnings(event.target.checked)} /></label>
+        <label className="switch-row"><span>蓝水</span><input type="checkbox" checked={showBluewater} onChange={(event) => setShowBluewater(event.target.checked)} /></label>
+      </div>
+
+      <div className="windy-timeline">
+        <div className="timeline-days">
+          {['周二 19', '周三 20', '周四 21', '周五 22', '周六 23', '周日 24'].map((day) => <span key={day}>{day}</span>)}
+        </div>
+        <div className="meteo-grid">
+          <span className="row-label">小时</span>
+          {selected.timeline.map((slot) => <b key={`t-${slot.time}`}>{slot.time}</b>)}
+          <span className="row-label">天气</span>
+          {selected.timeline.map((slot) => <span key={`w-${slot.time}`}>☀</span>)}
+          <span className="row-label">风 kt</span>
+          {selected.timeline.map((slot) => <em key={`wind-${slot.time}`}>{slot.windKts}</em>)}
+          <span className="row-label">浪 m</span>
+          {selected.timeline.map((slot) => <em key={`wave-${slot.time}`}>{slot.waveM}</em>)}
+          <span className="row-label">流 kt</span>
+          {selected.timeline.map((slot) => <em key={`cur-${slot.time}`}>{slot.currentKts}</em>)}
+          <span className="row-label">潮 m</span>
+          {selected.timeline.map((slot) => <em key={`tide-${slot.time}`}>{slot.tideHeightM}</em>)}
+        </div>
+      </div>
     </section>
   )
 }
@@ -566,20 +614,7 @@ function ForecastDetail({ forecast }: { forecast: ForecastGridCell }) {
 
 function Dashboard({ data, selected, setSelected }: { data: AppData; selected: ForecastGridCell; setSelected: (forecast: ForecastGridCell) => void }) {
   return (
-    <div className="dashboard">
-      <section className="hero-band">
-        <div>
-          <p className="eyebrow">全区域网页版</p>
-          <h1>像看 Windy 一样看整片海域，但用海钓决策语言解释天气、风浪、水流和潮汐。</h1>
-        </div>
-        <div className="hero-metrics">
-          <div><strong>{data.forecastGrid.length}</strong><span>预报网格</span></div>
-          <div><strong>{overlayModes.length}</strong><span>海况图层</span></div>
-          <div><strong>{data.tasks.length}</strong><span>任务完成</span></div>
-        </div>
-      </section>
-      <MapView data={data} selected={selected} setSelected={setSelected} />
-    </div>
+    <MapView data={data} selected={selected} setSelected={setSelected} />
   )
 }
 
