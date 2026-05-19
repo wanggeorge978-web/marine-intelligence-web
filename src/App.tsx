@@ -453,6 +453,17 @@ function nearestCanadaStation(stations: CanadaStation[], lat: number, lng: numbe
   return best
 }
 
+function nearestCanadaStations(stations: CanadaStation[], lat: number, lng: number, maxKm: number, limit: number) {
+  return stations
+    .map((station) => ({
+      station,
+      distanceKm: haversineKm({ lat, lng }, { lat: station.latitude, lng: station.longitude }),
+    }))
+    .filter((item) => item.distanceKm <= maxKm)
+    .sort((a, b) => a.distanceKm - b.distanceKm)
+    .slice(0, limit)
+}
+
 function nearestTimedItem<T extends { t?: string; Time?: string }>(items: T[] = []) {
   const now = Date.now()
   return items.reduce<T | undefined>((best, item) => {
@@ -522,6 +533,10 @@ async function fetchCanadaCurrentReading(lat: number, lng: number) {
   const nearest = nearestCanadaStation(stations, lat, lng, 140)
   if (!nearest) return undefined
   const { station, distanceKm } = nearest
+  return fetchCanadaCurrentStationReading(station, distanceKm)
+}
+
+async function fetchCanadaCurrentStationReading(station: CanadaStation, distanceKm: number) {
   const [observedSpeed, observedDirection, predictedSpeed, predictedDirection] = await Promise.all([
     hasTimeSeries(station, 'wcs1') ? fetchCanadaStationSeries(station.id, 'wcs1', -6, 1).then(nearestCanadaDataPoint).catch(() => undefined) : Promise.resolve(undefined),
     hasTimeSeries(station, 'wcd1') ? fetchCanadaStationSeries(station.id, 'wcd1', -6, 1).then(nearestCanadaDataPoint).catch(() => undefined) : Promise.resolve(undefined),
@@ -533,6 +548,8 @@ async function fetchCanadaCurrentReading(lat: number, lng: number) {
     stationCode: station.code,
     stationName: station.officialName,
     distanceKm,
+    lat: station.latitude,
+    lng: station.longitude,
     observed: observedSpeed ? {
       value: observedSpeed.value,
       directionDeg: observedDirection?.value,
@@ -548,13 +565,22 @@ async function fetchCanadaCurrentReading(lat: number, lng: number) {
   }
 }
 
+async function fetchCanadaCurrentStationMarkers(lat: number, lng: number) {
+  canadaCurrentStationsPromise ??= fetchCanadaCurrentStations()
+  const stations = await canadaCurrentStationsPromise
+  const nearest = nearestCanadaStations(stations, lat, lng, 180, 6)
+  const readings = await Promise.all(nearest.map(({ station, distanceKm }) => fetchCanadaCurrentStationReading(station, distanceKm).catch(() => undefined)))
+  return readings.filter((reading): reading is NonNullable<typeof reading> => Boolean(reading))
+}
+
 async function fetchCanadaStationData(lat: number, lng: number): Promise<CanadianStationData | undefined> {
-  const [waterLevel, current] = await Promise.all([
+  const [waterLevel, current, currentStations] = await Promise.all([
     fetchCanadaWaterReading(lat, lng),
     fetchCanadaCurrentReading(lat, lng),
+    fetchCanadaCurrentStationMarkers(lat, lng),
   ])
-  if (!waterLevel && !current) return undefined
-  return { waterLevel, current }
+  if (!waterLevel && !current && !currentStations.length) return undefined
+  return { waterLevel, current, currentStations }
 }
 
 async function fetchOpenMeteoAirQuality(lat: number, lng: number) {
@@ -877,6 +903,27 @@ function selectedPointGeoJson(forecast: ForecastGridCell): GeoJSON.FeatureCollec
   }
 }
 
+function canadaCurrentGeoJson(forecast: ForecastGridCell): GeoJSON.FeatureCollection<GeoJSON.Point> {
+  const stations = forecast.canadianStations?.currentStations ?? []
+  return {
+    type: 'FeatureCollection',
+    features: stations
+      .filter((station) => station.lat !== undefined && station.lng !== undefined && station.prediction?.value !== undefined)
+      .map((station) => ({
+        type: 'Feature',
+        properties: {
+          code: station.stationCode,
+          name: station.stationName,
+          speed: station.prediction?.value ?? 0,
+          direction: station.prediction?.directionDeg ?? 0,
+          label: `${station.prediction?.value?.toFixed(1) ?? '—'} kt`,
+          distance: Math.round(station.distanceKm),
+        },
+        geometry: { type: 'Point', coordinates: [station.lng as number, station.lat as number] },
+      })),
+  }
+}
+
 function Shell({ page, setPage, children }: { page: PageId; setPage: (page: PageId) => void; children: React.ReactNode }) {
   return (
     <div className={`app-shell ${page === 'map' ? 'immersive-shell' : ''}`}>
@@ -998,7 +1045,66 @@ function MapView({
           'text-halo-width': 1,
         },
       })
+      map.addSource('canada-current-stations', { type: 'geojson', data: canadaCurrentGeoJson(initialSelected) })
+      map.addLayer({
+        id: 'canada-current-arrows',
+        type: 'symbol',
+        source: 'canada-current-stations',
+        layout: {
+          'text-field': '➤',
+          'text-size': ['interpolate', ['linear'], ['get', 'speed'], 0, 18, 1.5, 26, 3, 34],
+          'text-rotate': ['get', 'direction'],
+          'text-allow-overlap': true,
+          'text-ignore-placement': true,
+        },
+        paint: {
+          'text-color': ['interpolate', ['linear'], ['get', 'speed'], 0, '#2477ff', 1.2, '#2477ff', 2.0, '#ff8f00', 3.0, '#d7191c'],
+          'text-halo-color': '#ffffff',
+          'text-halo-width': 2.2,
+        },
+      })
+      map.addLayer({
+        id: 'canada-current-labels',
+        type: 'symbol',
+        source: 'canada-current-stations',
+        layout: {
+          'text-field': ['concat', ['get', 'label'], ' · ', ['get', 'code']],
+          'text-size': 12,
+          'text-offset': [0, 1.7],
+          'text-anchor': 'top',
+          'text-allow-overlap': true,
+        },
+        paint: {
+          'text-color': '#10242b',
+          'text-halo-color': '#ffffff',
+          'text-halo-width': 1.6,
+        },
+      })
+      const showCanadaCurrentPopup = (event: maplibregl.MapLayerMouseEvent) => {
+        const feature = event.features?.[0]
+        if (!feature) return
+        const coordinates = (feature.geometry as GeoJSON.Point).coordinates.slice() as [number, number]
+        const props = feature.properties ?? {}
+        new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '260px' })
+          .setLngLat(coordinates)
+          .setHTML(`
+            <div class="map-popup">
+              <strong>${props.name ?? '加拿大潮流站'}</strong>
+              <span>${props.code ?? ''} · ${props.distance ?? '—'} km</span>
+              <p>预测流速：${Number(props.speed ?? 0).toFixed(1)} kt</p>
+              <p>方向：${Math.round(Number(props.direction ?? 0))}°</p>
+              <small>DFO/CHS 站点潮流预测</small>
+            </div>
+          `)
+          .addTo(map)
+      }
+      map.on('click', 'canada-current-arrows', showCanadaCurrentPopup)
+      map.on('click', 'canada-current-labels', showCanadaCurrentPopup)
+      map.on('mouseenter', 'canada-current-arrows', () => { map.getCanvas().style.cursor = 'pointer' })
+      map.on('mouseleave', 'canada-current-arrows', () => { map.getCanvas().style.cursor = '' })
       map.on('click', (event) => {
+        const currentStationFeatures = map.queryRenderedFeatures(event.point, { layers: ['canada-current-arrows', 'canada-current-labels'] })
+        if (currentStationFeatures.length) return
         void loadPoint(event.lngLat.lng, event.lngLat.lat)
       })
     })
@@ -1015,6 +1121,10 @@ function MapView({
     const source = map.getSource('selected-forecast-point') as maplibregl.GeoJSONSource | undefined
     if (source) {
       source.setData(selectedPointGeoJson(selected))
+    }
+    const canadaSource = map.getSource('canada-current-stations') as maplibregl.GeoJSONSource | undefined
+    if (canadaSource) {
+      canadaSource.setData(canadaCurrentGeoJson(selected))
     }
     const tone = scoreTone(selected.score)
     if (map.getLayer('selected-forecast-halo')) {
@@ -1077,6 +1187,7 @@ function MapView({
       <div className="windy-left-badges">
         <div className={toneClass(scoreRiskTone)}><strong>{selected.score}</strong><span>海钓评分</span></div>
         <div className={toneClass(windTone(selected.weather.windKts))}><strong>{selected.weather.windKts}</strong><span>风 kt</span></div>
+        <div className={toneClass(waveTone(selected.marine.waveM))}><strong>{formatMeters(selected.marine.waveM)}</strong><span>浪 m</span></div>
         <div className={toneClass(currentTone(selected.water.currentKts))}><strong>{selected.water.currentKts}</strong><span>海流 kt</span></div>
       </div>
 
@@ -1098,6 +1209,13 @@ function MapView({
         <i />
         <small>好</small><small>谨慎</small><small>危险</small>
       </div>
+
+      {(selected.canadianStations?.currentStations?.length ?? 0) > 0 && (
+        <div className="canada-current-map-note">
+          <strong>加拿大潮流站</strong>
+          <span>蓝/橙/红箭头为 DFO/CHS 站点潮流预测，不是全海面模型</span>
+        </div>
+      )}
 
       <div className="windy-bottom-sheet">
         <ForecastDetail forecast={selected} isLoading={isLoadingPoint} error={pointError} />

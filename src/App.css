@@ -192,7 +192,7 @@
 .windy-left-badges {
   position: absolute;
   left: 18px;
-  bottom: 258px;
+  bottom: 248px;
   z-index: 5;
   display: grid;
   gap: 10px;
@@ -262,6 +262,60 @@
   background: rgba(255, 255, 255, 0.92);
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.24);
   backdrop-filter: blur(12px);
+}
+
+.canada-current-map-note {
+  position: absolute;
+  left: 118px;
+  bottom: 248px;
+  z-index: 5;
+  max-width: min(520px, calc(100vw - 360px));
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  color: #123039;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(12px);
+}
+
+.canada-current-map-note strong {
+  color: #b90000;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.canada-current-map-note span {
+  overflow: hidden;
+  color: #39525a;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.map-popup {
+  display: grid;
+  gap: 4px;
+  color: #173238;
+  font-size: 13px;
+}
+
+.map-popup strong {
+  color: #10242b;
+  font-size: 14px;
+}
+
+.map-popup span,
+.map-popup small {
+  color: #65777c;
+  font-size: 12px;
+}
+
+.map-popup p {
+  margin: 0;
+  color: #173238;
 }
 
 .windy-color-legend div {
@@ -963,8 +1017,8 @@ p {
   display: grid;
   gap: 4px;
   padding: 12px;
-  background: color-mix(in srgb, var(--tone-color, #f4f7f3) 11%, #ffffff);
-  border: 1px solid color-mix(in srgb, var(--tone-color, #dce6df) 48%, #dce6df);
+  background: color-mix(in srgb, var(--tone-color, #f4f7f3) 22%, #ffffff);
+  border: 1px solid color-mix(in srgb, var(--tone-color, #dce6df) 64%, #dce6df);
   border-left: 6px solid var(--tone-color, #dce6df);
   border-radius: 8px;
 }

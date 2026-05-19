@@ -75,6 +75,8 @@ export type OfficialStationReading = {
   stationCode: string
   stationName: string
   distanceKm: number
+  lat?: number
+  lng?: number
   observed?: {
     value?: number
     directionDeg?: number
@@ -92,6 +94,7 @@ export type OfficialStationReading = {
 export type CanadianStationData = {
   waterLevel?: OfficialStationReading
   current?: OfficialStationReading
+  currentStations?: OfficialStationReading[]
 }
 
 export type ForecastGridCell = MarinePointForecast & {
