@@ -566,10 +566,11 @@ async function fetchCanadaWaterReading(lat: number, lng: number) {
   const nearest = nearestCanadaStation(stations, lat, lng, 250)
   if (!nearest) return undefined
   const { station, distanceKm } = nearest
-  const [observed, prediction] = await Promise.all([
+  const [observed, predictionSeries] = await Promise.all([
     hasTimeSeries(station, 'wlo') ? fetchCanadaStationSeries(station.id, 'wlo', -6, 1).then(nearestCanadaDataPoint).catch(() => undefined) : Promise.resolve(undefined),
-    hasTimeSeries(station, 'wlp') ? fetchCanadaStationSeries(station.id, 'wlp', -1, 12).then(nearestCanadaDataPoint).catch(() => undefined) : Promise.resolve(undefined),
+    hasTimeSeries(station, 'wlp') ? fetchCanadaStationSeries(station.id, 'wlp', -1, 30, 'FIFTEEN_MINUTES').catch((): CanadaDataPoint[] => []) : Promise.resolve([]),
   ])
+  const prediction = nearestCanadaDataPoint(predictionSeries)
   if (!observed && !prediction) return undefined
   return {
     stationCode: station.code,
@@ -577,6 +578,11 @@ async function fetchCanadaWaterReading(lat: number, lng: number) {
     distanceKm,
     observed: observed ? { value: observed.value, time: observed.eventDate, qcFlagCode: observed.qcFlagCode } : undefined,
     prediction: prediction ? { value: prediction.value, time: prediction.eventDate, qcFlagCode: prediction.qcFlagCode } : undefined,
+    predictionSeries: predictionSeries.map((point) => ({
+      value: point.value,
+      time: point.eventDate,
+      qcFlagCode: point.qcFlagCode,
+    })),
   }
 }
 
@@ -1541,6 +1547,124 @@ function stationDayLabel(time?: string) {
   return new Date(time).toLocaleDateString('zh-CN', { weekday: 'short', month: '2-digit', day: '2-digit' })
 }
 
+function seriesWindow(series: Array<{ time: string; value?: number }> = []) {
+  const times = series
+    .map((point) => new Date(point.time).getTime())
+    .filter((time) => Number.isFinite(time))
+    .sort((a, b) => a - b)
+  if (!times.length) return undefined
+  return { startMs: times[0], endMs: times[times.length - 1] }
+}
+
+function pointSeriesFromTimeline(timeline: ForecastGridCell['timeline']) {
+  return timeline
+    .filter((slot) => slot.isoTime && Number.isFinite(slot.tideHeightM))
+    .map((slot) => ({ time: slot.isoTime as string, value: slot.tideHeightM }))
+}
+
+function currentValueAtSeries(series: Array<{ time: string; value?: number }> = [], isoTime?: string) {
+  if (!series.length) return undefined
+  const reading: OfficialStationReading = {
+    stationCode: '',
+    stationName: '',
+    distanceKm: 0,
+    prediction: series[0],
+    predictionSeries: series,
+  }
+  return stationPredictionAt(reading, isoTime)?.value
+}
+
+function extremaForSeries(series: Array<{ time: string; value?: number }> = []) {
+  const valid = series.filter((point) => Number.isFinite(point.value))
+  const highest = [...valid].sort((a, b) => (b.value ?? 0) - (a.value ?? 0))[0]
+  const lowest = [...valid].sort((a, b) => (a.value ?? 0) - (b.value ?? 0))[0]
+  return { highest, lowest }
+}
+
+function nextExtremaForSeries(series: Array<{ time: string; value?: number }> = [], isoTime?: string) {
+  const activeMs = new Date(isoTime ?? '').getTime()
+  const future = Number.isFinite(activeMs)
+    ? series.filter((point) => new Date(point.time).getTime() >= activeMs)
+    : series
+  return extremaForSeries(future.length ? future : series)
+}
+
+function chartPoints(series: Array<{ time: string; value?: number }> = [], width: number, height: number) {
+  const window = seriesWindow(series)
+  const values = series.map((point) => point.value ?? 0).filter((value) => Number.isFinite(value))
+  const min = Math.min(...values)
+  const max = Math.max(...values)
+  const span = Math.max(0.01, max - min)
+  const points = series
+    .filter((point) => Number.isFinite(point.value) && Number.isFinite(new Date(point.time).getTime()) && window)
+    .map((point) => {
+      const time = new Date(point.time).getTime()
+      const x = window ? ((time - window.startMs) / Math.max(1, window.endMs - window.startMs)) * width : 0
+      const y = height - (((point.value ?? min) - min) / span) * (height - 12) - 6
+      return `${x.toFixed(1)},${y.toFixed(1)}`
+    })
+  return { points, min, max, window }
+}
+
+function TideChart({
+  waterLevel,
+  fallbackTimeline,
+  activeIso,
+}: {
+  waterLevel?: OfficialStationReading
+  fallbackTimeline: ForecastGridCell['timeline']
+  activeIso?: string
+}) {
+  const officialSeries = waterLevel?.predictionSeries ?? []
+  const series = officialSeries.length > 1 ? officialSeries : pointSeriesFromTimeline(fallbackTimeline)
+  if (series.length < 2) {
+    return <div className="tide-card empty">附近没有可用潮位曲线。</div>
+  }
+  const width = 420
+  const height = 96
+  const { points, window } = chartPoints(series, width, height)
+  const activeMs = new Date(activeIso ?? '').getTime()
+  const activeX = window && Number.isFinite(activeMs) ? ((activeMs - window.startMs) / Math.max(1, window.endMs - window.startMs)) * width : 0
+  const currentValue = currentValueAtSeries(series, activeIso)
+  const { highest, lowest } = extremaForSeries(series)
+  const next = nextExtremaForSeries(series, activeIso)
+  const area = points.length ? `0,${height} ${points.join(' ')} ${width},${height}` : ''
+  return (
+    <div className="tide-card">
+      <div className="visual-card-head">
+        <div>
+          <span>{officialSeries.length > 1 ? 'DFO/CHS 政府水位站' : '模型海平面趋势'}</span>
+          <strong>{waterLevel?.stationName ?? '点击点潮位趋势'}</strong>
+          <small>{waterLevel ? `${waterLevel.stationCode} · ${Math.round(waterLevel.distanceKm)} km` : 'Open-Meteo sea_level_height_msl'}</small>
+        </div>
+        <div className="visual-value">
+          <strong>{currentValue?.toFixed(2) ?? '--'}</strong>
+          <span>m</span>
+        </div>
+      </div>
+      <svg className="tide-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="潮位曲线">
+        <defs>
+          <linearGradient id="tideFill" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor="#2fa7d7" stopOpacity="0.45" />
+            <stop offset="100%" stopColor="#2fa7d7" stopOpacity="0.05" />
+          </linearGradient>
+        </defs>
+        <rect width={width} height={height} rx="7" />
+        <line x1="0" x2={width} y1={height / 2} y2={height / 2} />
+        <polygon points={area} />
+        <polyline points={points.join(' ')} />
+        <line className="now-line" x1={activeX} x2={activeX} y1="0" y2={height} />
+      </svg>
+      <div className="event-grid">
+        <span>高潮 {stationClockLabel(highest?.time)} · {highest?.value?.toFixed(2) ?? '--'} m</span>
+        <span>低潮 {stationClockLabel(lowest?.time)} · {lowest?.value?.toFixed(2) ?? '--'} m</span>
+        <span>后续高潮 {stationClockLabel(next.highest?.time)} · {next.highest?.value?.toFixed(2) ?? '--'} m</span>
+        <span>后续低潮 {stationClockLabel(next.lowest?.time)} · {next.lowest?.value?.toFixed(2) ?? '--'} m</span>
+      </div>
+    </div>
+  )
+}
+
 function CurrentStationDetail({
   station,
   stationTimeIso,
@@ -1559,23 +1683,18 @@ function CurrentStationDetail({
   }
   const prediction = stationPredictionAt(station, stationTimeIso)
   const series = station.predictionSeries ?? []
-  const window = stationPredictionWindow(station)
-  const maxSpeed = Math.max(1, ...series.map((point) => point.value ?? 0))
   const width = 420
-  const height = 92
-  const points = series
-    .filter((point) => Number.isFinite(point.value) && Number.isFinite(new Date(point.time).getTime()) && window)
-    .map((point) => {
-      const time = new Date(point.time).getTime()
-      const x = window ? ((time - window.startMs) / Math.max(1, window.endMs - window.startMs)) * width : 0
-      const y = height - ((point.value ?? 0) / maxSpeed) * (height - 10) - 5
-      return `${x.toFixed(1)},${y.toFixed(1)}`
-    })
-    .join(' ')
+  const height = 96
+  const { points, window } = chartPoints(series, width, height)
+  const pointString = points.join(' ')
+  const area = points.length ? `0,${height} ${pointString} ${width},${height}` : ''
   const activeTime = new Date(stationTimeIso ?? '').getTime()
   const activeX = window && Number.isFinite(activeTime) ? ((activeTime - window.startMs) / Math.max(1, window.endMs - window.startMs)) * width : 0
   const strongest = [...series].sort((a, b) => (b.value ?? 0) - (a.value ?? 0))[0]
-  const nextStrong = series.find((point) => new Date(point.time).getTime() > activeTime && (point.value ?? 0) >= maxSpeed * 0.75)
+  const weakest = [...series].sort((a, b) => (a.value ?? 0) - (b.value ?? 0))[0]
+  const future = Number.isFinite(activeTime) ? series.filter((point) => new Date(point.time).getTime() >= activeTime) : series
+  const nextStrong = [...future].sort((a, b) => (b.value ?? 0) - (a.value ?? 0))[0]
+  const nextWeak = [...future].sort((a, b) => (a.value ?? 0) - (b.value ?? 0))[0]
   return (
     <div className="current-station-detail">
       <div className="current-station-title">
@@ -1595,18 +1714,21 @@ function CurrentStationDetail({
         <div className="current-curve">
           <div className="curve-meta">
             <span>{stationClockLabel(stationTimeIso)}</span>
-            <strong>{prediction?.directionDeg?.toFixed(0) ?? '--'}°</strong>
+            <strong>{prediction?.directionDeg?.toFixed(0) ?? '--'}° · {prediction?.value?.toFixed(2) ?? '--'} kt</strong>
             <span>{stationDayLabel(stationTimeIso)}</span>
           </div>
           <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="潮流速度曲线">
             <rect width={width} height={height} rx="6" />
             <line x1="0" x2={width} y1={height * 0.58} y2={height * 0.58} />
-            <polyline points={points} />
+            <polygon points={area} />
+            <polyline points={pointString} />
             <line className="now-line" x1={activeX} x2={activeX} y1="0" y2={height} />
           </svg>
-          <div className="curve-events">
-            <span>最强 {stationClockLabel(strongest?.time)} · {strongest?.value?.toFixed(2) ?? '--'} kt</span>
+          <div className="event-grid current-events">
+            <span>最强流 {stationClockLabel(strongest?.time)} · {strongest?.value?.toFixed(2) ?? '--'} kt</span>
+            <span>最弱/转流 {stationClockLabel(weakest?.time)} · {weakest?.value?.toFixed(2) ?? '--'} kt</span>
             <span>后续强流 {stationClockLabel(nextStrong?.time)} · {nextStrong?.value?.toFixed(2) ?? '--'} kt</span>
+            <span>后续弱流 {stationClockLabel(nextWeak?.time)} · {nextWeak?.value?.toFixed(2) ?? '--'} kt</span>
           </div>
         </div>
       </div>
@@ -1704,6 +1826,7 @@ function ForecastDetail({
       </div>
       {panel === 'forecast' && (
         <div className="workbench-panel point-panel">
+          <TideChart waterLevel={canada?.waterLevel} fallbackTimeline={forecast.timeline} activeIso={activeSlot?.isoTime} />
           <div className="current-row">
             <CurrentArrow degrees={displayCurrentDir} />
             <span>{forecast.lat.toFixed(3)}, {forecast.lng.toFixed(3)} · {activeSlot?.time ?? '当前'} · {displayCondition} · 气压 {displayPressure} hPa · 降水 {displayPrecip} mm · {forecast.fish.tactic}</span>
@@ -1724,6 +1847,7 @@ function ForecastDetail({
             <div><strong>水位 / 潮汐</strong><span>{waterLevelSummary}</span></div>
             <div><strong>潮流站</strong><span>{currentStationSummary}</span></div>
           </div>
+          <TideChart waterLevel={canada?.waterLevel} fallbackTimeline={forecast.timeline} activeIso={stationTimeIso ?? activeSlot?.isoTime} />
           <CurrentStationDetail
             station={activeStation}
             stationTimeIso={stationTimeIso}
