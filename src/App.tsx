@@ -104,6 +104,36 @@ function formatDate(value: string) {
   }).format(new Date(value))
 }
 
+function formatForecastMoment(isoTime?: string, fallbackTime = '--:--') {
+  if (!isoTime) return fallbackTime
+  return new Intl.DateTimeFormat('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(isoTime))
+}
+
+function formatForecastDay(isoTime?: string) {
+  if (!isoTime) return ''
+  const date = new Date(isoTime)
+  const weekday = new Intl.DateTimeFormat('zh-CN', { weekday: 'short' }).format(date)
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${weekday} ${pad(date.getMonth() + 1)}/${pad(date.getDate())}`
+}
+
+function shortWeatherLabel(condition?: string) {
+  if (!condition) return '未知'
+  if (condition.includes('雷')) return '雷'
+  if (condition.includes('雨')) return '雨'
+  if (condition.includes('雪')) return '雪'
+  if (condition.includes('雾')) return '雾'
+  if (condition.includes('云')) return '云'
+  if (condition.includes('晴')) return '晴'
+  return condition.slice(0, 2)
+}
+
 function windDirectionName(value: string) {
   const map: Record<string, string> = {
     N: '北风',
@@ -829,11 +859,15 @@ async function fetchRealForecast(lng: number, lat: number): Promise<ForecastGrid
   const currentDirDeg = Math.round(marine.current?.ocean_current_direction ?? 0)
   const windDirDeg = Math.round(weather.current?.wind_direction_10m ?? weather.hourly?.wind_direction_10m?.[weatherIndex] ?? 0)
   const score = Math.max(20, Math.min(95, Math.round(92 - Math.max(0, windKts - 10) * 2.2 - Math.max(0, waveM - 1.2) * 10 - Math.max(0, currentKts - 1.8) * 8)))
-  const timeline = Array.from({ length: 48 }, (_, itemIndex) => {
+  const weatherHoursAvailable = Math.max(1, (weather.hourly?.time?.length ?? 0) - weatherIndex)
+  const marineHoursAvailable = Math.max(1, (marine.hourly?.time?.length ?? 0) - marineIndex)
+  const timelineLength = Math.max(48, Math.min(7 * 24 * 2, (Math.min(weatherHoursAvailable, marineHoursAvailable) - 1) * 2 + 1))
+  const timeline = Array.from({ length: timelineLength }, (_, itemIndex) => {
     const hourOffset = itemIndex / 2
     const weatherHour = weatherIndex + hourOffset
     const marineHour = marineIndex + hourOffset
     const tWind = Number(interpolateSeries(weather.hourly?.wind_speed_10m, weatherHour, windKts).toFixed(1))
+    const tWindGust = Number(interpolateSeries(weather.hourly?.wind_gusts_10m, weatherHour, weather.current?.wind_gusts_10m ?? tWind).toFixed(1))
     const tWindDir = Math.round(interpolateDegrees(
       weather.hourly?.wind_direction_10m?.[Math.floor(weatherHour)] ?? windDirDeg,
       weather.hourly?.wind_direction_10m?.[Math.ceil(weatherHour)] ?? windDirDeg,
@@ -864,6 +898,7 @@ async function fetchRealForecast(lng: number, lat: number): Promise<ForecastGrid
       airTempC: tTemp,
       condition: weatherCodeName(weather.hourly?.weather_code?.[Math.round(weatherHour)] ?? weather.current?.weather_code),
       windKts: tWind,
+      windGustKts: tWindGust,
       windDirDeg: tWindDir,
       currentKts: tCurrent,
       currentDirDeg: tCurrentDir,
@@ -1446,9 +1481,6 @@ function MapView({
         className="forecast-popup map-inspector-window"
         style={{ '--popup-x': `${inspectorPoint.x}px`, '--popup-y': `${inspectorPoint.y}px` } as React.CSSProperties}
       >
-        <button className="workbench-close" aria-label="关闭预报窗口" onClick={() => setInspectorOpen(false)}>
-          <X size={18} />
-        </button>
         <div className="workbench-header draggable-header" onPointerDown={startInspectorDrag}>
           <div>
             <strong>海况工作台</strong>
@@ -1471,6 +1503,9 @@ function MapView({
               )
             })}
           </div>
+          <button className="workbench-close" aria-label="关闭预报窗口" onClick={() => setInspectorOpen(false)}>
+            <X size={18} />
+          </button>
         </div>
         <ForecastDetail
           forecast={selected}
@@ -1492,7 +1527,7 @@ function MapView({
         <div className="time-scrubber">
           <div>
             <strong>预测时间</strong>
-            <span>{activeTimelineSlot?.time ?? '--:--'} · 每 30 分钟 · 预报和潮流箭头同步</span>
+            <span>{formatForecastMoment(activeTimelineSlot?.isoTime, activeTimelineSlot?.time)} · 每 30 分钟 · 预报和潮流箭头同步</span>
           </div>
           <input
             aria-label="选择预测时间"
@@ -1506,17 +1541,147 @@ function MapView({
           />
         </div>
         <div className="popup-hour-strip" aria-label="分时预报">
-          {selected.timeline.map((slot, index) => (
-            <button className={index === activeTimelineIndex ? 'active-time' : ''} key={`popup-${slot.time}`} onClick={() => setTimelineIndex(index)}>
+          {selected.timeline.slice(0, 48).map((slot, index) => (
+            <button className={index === activeTimelineIndex ? 'active-time' : ''} key={`popup-${slot.isoTime ?? slot.time}-${index}`} onClick={() => setTimelineIndex(index)}>
               <strong>{slot.time}</strong>
               <span>{slot.bite}</span>
               <small>{slot.windKts}kt · {formatMeters(slot.waveM)}m</small>
             </button>
           ))}
         </div>
+        {workbenchPanel === 'forecast' && (
+          <SevenDayForecastMatrix
+            timeline={selected.timeline}
+            activeIndex={activeTimelineIndex}
+            onSelect={setTimelineIndex}
+          />
+        )}
       </div>
       )}
     </section>
+  )
+}
+
+function SevenDayForecastMatrix({
+  timeline,
+  activeIndex,
+  onSelect,
+}: {
+  timeline: ForecastGridCell['timeline']
+  activeIndex: number
+  onSelect: (index: number) => void
+}) {
+  const activeSlot = timeline[activeIndex] ?? timeline[0]
+  const slots = timeline
+    .map((slot, index) => ({ slot, index }))
+    .filter(({ index }) => index % 6 === 0 || index === activeIndex)
+    .sort((a, b) => a.index - b.index)
+  const gridStyle = { gridTemplateColumns: `68px repeat(${slots.length}, 58px)` } as React.CSSProperties
+
+  const cellClass = (index: number, extra = '') => `matrix-cell ${extra} ${index === activeIndex ? 'active-time' : ''}`.trim()
+  const selectLabel = activeSlot
+    ? `${activeSlot.condition ?? '天气'} · 风 ${activeSlot.windKts}kt · 阵风 ${activeSlot.windGustKts ?? activeSlot.windKts}kt · 浪 ${formatMeters(activeSlot.waveM)}m · 流 ${activeSlot.currentKts}kt`
+    : '暂无预报'
+
+  return (
+    <div className="seven-day-forecast" aria-label="7 天风浪趋势">
+      <div className="matrix-title">
+        <div>
+          <strong>7 天风浪趋势</strong>
+          <span>横向拖动查看；点击任意时刻同步上方卡片、潮位图和潮流箭头</span>
+        </div>
+        <small>近 24 小时保留 30 分钟精度，趋势表每 3 小时采样</small>
+      </div>
+      <div className="matrix-active-readout">
+        <strong>{activeSlot ? formatForecastMoment(activeSlot.isoTime, activeSlot.time) : '--:--'}</strong>
+        <span>{selectLabel}</span>
+      </div>
+      <div className="forecast-matrix-scroll">
+        <div className="forecast-matrix-grid" style={gridStyle}>
+          <span className="matrix-row-label">日期</span>
+          {slots.map(({ slot, index }, slotIndex) => {
+            const dateKey = slot.isoTime?.slice(0, 10)
+            const previousDateKey = slots[slotIndex - 1]?.slot.isoTime?.slice(0, 10)
+            return (
+              <button
+                className={cellClass(index, `matrix-day ${dateKey !== previousDateKey ? 'day-start' : ''}`)}
+                key={`day-${slot.isoTime ?? index}`}
+                onClick={() => onSelect(index)}
+                type="button"
+              >
+                {dateKey !== previousDateKey ? formatForecastDay(slot.isoTime) : ''}
+              </button>
+            )
+          })}
+
+          <span className="matrix-row-label">小时</span>
+          {slots.map(({ slot, index }) => (
+            <button className={cellClass(index, 'matrix-hour')} key={`hour-${slot.isoTime ?? index}`} onClick={() => onSelect(index)} type="button">
+              {slot.time}
+            </button>
+          ))}
+
+          <span className="matrix-row-label">天气</span>
+          {slots.map(({ slot, index }) => (
+            <button className={cellClass(index, 'matrix-weather')} key={`weather-${slot.isoTime ?? index}`} onClick={() => onSelect(index)} title={slot.condition} type="button">
+              <strong>{shortWeatherLabel(slot.condition)}</strong>
+              <small>{slot.airTempC?.toFixed(0) ?? '—'}°</small>
+            </button>
+          ))}
+
+          <span className="matrix-row-label">风 kt</span>
+          {slots.map(({ slot, index }) => (
+            <button className={cellClass(index, `matrix-band ${toneClass(windTone(slot.windKts))}`)} key={`wind-${slot.isoTime ?? index}`} onClick={() => onSelect(index)} type="button">
+              {slot.windKts.toFixed(0)}
+            </button>
+          ))}
+
+          <span className="matrix-row-label">阵风</span>
+          {slots.map(({ slot, index }) => {
+            const gust = slot.windGustKts ?? slot.windKts
+            return (
+              <button className={cellClass(index, `matrix-band ${toneClass(windTone(gust))}`)} key={`gust-${slot.isoTime ?? index}`} onClick={() => onSelect(index)} type="button">
+                {gust.toFixed(0)}
+              </button>
+            )
+          })}
+
+          <span className="matrix-row-label">风向</span>
+          {slots.map(({ slot, index }) => (
+            <button className={cellClass(index, 'matrix-direction')} key={`dir-${slot.isoTime ?? index}`} onClick={() => onSelect(index)} title={windDirectionDetail(slot.windDirDeg)} type="button">
+              <span className="matrix-arrow" style={{ transform: `rotate(${slot.windDirDeg ?? 0}deg)` }}>↑</span>
+            </button>
+          ))}
+
+          <span className="matrix-row-label">浪 m</span>
+          {slots.map(({ slot, index }) => {
+            const wave = slot.waveM ?? 0
+            return (
+              <button className={cellClass(index, `matrix-band ${toneClass(waveTone(wave))}`)} key={`wave-${slot.isoTime ?? index}`} onClick={() => onSelect(index)} type="button">
+                {formatMeters(wave)}
+              </button>
+            )
+          })}
+
+          <span className="matrix-row-label">流 kt</span>
+          {slots.map(({ slot, index }) => (
+            <button className={cellClass(index, `matrix-band ${toneClass(currentTone(slot.currentKts))}`)} key={`current-${slot.isoTime ?? index}`} onClick={() => onSelect(index)} type="button">
+              {slot.currentKts.toFixed(1)}
+            </button>
+          ))}
+
+          <span className="matrix-row-label">海平面</span>
+          {slots.map(({ slot, index }) => {
+            const tideHeight = slot.tideHeightM ?? 0
+            return (
+              <button className={cellClass(index, `matrix-band ${toneClass(tideTone(tideHeight))}`)} key={`tide-${slot.isoTime ?? index}`} onClick={() => onSelect(index)} type="button">
+                {tideHeight.toFixed(1)}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -1934,8 +2099,8 @@ function ForecastDetail({
       </div>
       <div className="timeline">
         <div className="mini-title"><AreaChart size={18} /><strong>分时预报</strong></div>
-        {forecast.timeline.map((slot) => (
-          <div className="timeline-row forecast" key={slot.time}>
+        {forecast.timeline.map((slot, index) => (
+          <div className="timeline-row forecast" key={`${slot.isoTime ?? slot.time}-${index}`}>
             <span>{slot.time}</span>
             <meter min="0" max="100" value={slot.bite} />
             <strong>{slot.bite}</strong>

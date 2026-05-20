@@ -60,6 +60,7 @@ export type MarinePointForecast = {
     airTempC?: number
     condition?: string
     windKts: number
+    windGustKts?: number
     windDirDeg?: number
     currentKts: number
     currentDirDeg?: number
