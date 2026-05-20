@@ -50,6 +50,11 @@ import type {
 type OverlayMode = 'weather' | 'wind' | 'waves' | 'current' | 'tide' | 'sst'
 type RiskTone = 'excellent' | 'good' | 'fair' | 'poor' | 'danger'
 type WorkbenchPanel = 'forecast' | 'stations' | 'trust'
+type NonnaDepthInfo =
+  | { status: 'loading'; source: string }
+  | { status: 'ok'; source: string; depthM: number; rawElevationM: number; resolutionM: number; distanceKm: number }
+  | { status: 'nodata'; source: string; message: string }
+  | { status: 'error'; source: string; message: string }
 
 const pages: Array<{ id: PageId; label: string; icon: typeof Map }> = [
   { id: 'map', label: '海况地图', icon: Map },
@@ -1160,16 +1165,39 @@ function habitatGeoJson(): GeoJSON.FeatureCollection<GeoJSON.Geometry> {
   }
 }
 
-function estimateTerrain(forecast: ForecastGridCell) {
-  const offshoreFactor = Math.max(0, Math.min(1, (Math.abs(forecast.lng + 123.15) + Math.abs(forecast.lat - 49.1) * 0.7) / 2.1))
-  const waveFactor = Math.min(1, (forecast.marine.waveM ?? 0) / 3)
-  const currentFactor = Math.min(1, forecast.water.currentKts / 3)
-  const depthM = Math.max(8, Math.round(10 + offshoreFactor * 155 + waveFactor * 22))
-  const slope = depthM > 95 || currentFactor > 0.58 ? '陡坎/水道边' : depthM > 45 ? '缓坡/结构边' : '浅中水沙泥底'
-  const substrate = depthM < 45 ? 'sand / mud' : depthM < 95 ? 'mixed gravel / rock edge' : 'deep rock / channel'
-  const target = depthM < 45 ? 'Sole' : depthM < 95 ? 'Halibut / Lingcod' : 'Rockfish'
-  const method = depthM < 45 ? '轻铅底钓、慢漂' : depthM < 95 ? '漂流底钓、结构边搜索' : '重铅 jigging，谨慎控线'
-  return { depthM, slope, substrate, target, method }
+function distanceKm(aLat: number, aLng: number, bLat: number, bLng: number) {
+  const radians = Math.PI / 180
+  const x = (bLng - aLng) * radians * Math.cos(((aLat + bLat) * radians) / 2)
+  const y = (bLat - aLat) * radians
+  return Math.sqrt(x * x + y * y) * 6371
+}
+
+function cachedNonnaDepth(data: AppData['depthGrid'], lng: number, lat: number): NonnaDepthInfo {
+  const nearest = data.points
+    .filter((point) => point.status === 'ok' && point.depthM !== undefined && point.rawElevationM !== undefined)
+    .map((point) => ({ point, distanceKm: distanceKm(lat, lng, point.lat, point.lng) }))
+    .sort((a, b) => a.distanceKm - b.distanceKm)[0]
+
+  if (!nearest || nearest.distanceKm > 30) {
+    return { status: 'nodata', source: data.source, message: '附近无 NONNA 缓存水深' }
+  }
+
+  return {
+    status: 'ok',
+    source: data.source,
+    depthM: nearest.point.depthM as number,
+    rawElevationM: nearest.point.rawElevationM as number,
+    resolutionM: data.resolutionM,
+    distanceKm: nearest.distanceKm,
+  }
+}
+
+function depthBand(depthInfo: NonnaDepthInfo) {
+  if (depthInfo.status === 'loading') return { label: '查水深中', detail: '正在读取 NONNA 原始栅格' }
+  if (depthInfo.status !== 'ok') return { label: '未知水深', detail: depthInfo.message }
+  if (depthInfo.depthM < 20) return { label: '浅水', detail: '仅由真实水深分级' }
+  if (depthInfo.depthM < 80) return { label: '中等水深', detail: '仅由真实水深分级' }
+  return { label: '深水', detail: '仅由真实水深分级' }
 }
 
 function stationPredictionAt(station: OfficialStationReading, isoTime?: string) {
@@ -1325,7 +1353,8 @@ function MapView({
   const [isTimelinePlaying, setIsTimelinePlaying] = useState(false)
   const [showDepth, setShowDepth] = useState(true)
   const [showRules, setShowRules] = useState(true)
-  const [showHabitat, setShowHabitat] = useState(true)
+  const [showHabitat, setShowHabitat] = useState(false)
+  const [depthInfo, setDepthInfo] = useState<NonnaDepthInfo>({ status: 'loading', source: 'CHS NONNA 100 WCS' })
 
   const loadPoint = useCallback(async (lng: number, lat: number) => {
     setPointError(null)
@@ -1350,6 +1379,10 @@ function MapView({
   useEffect(() => {
     selectedRef.current = selected
   }, [selected])
+
+  useEffect(() => {
+    setDepthInfo(cachedNonnaDepth(data.depthGrid, selected.lng, selected.lat))
+  }, [data.depthGrid, selected.lat, selected.lng])
 
   useEffect(() => {
     setIsTimelinePlaying(false)
@@ -1426,6 +1459,7 @@ function MapView({
         type: 'line',
         source: 'habitat-zones',
         filter: ['==', ['get', 'shape'], 'line'],
+        layout: { visibility: 'none' },
         paint: {
           'line-color': ['get', 'color'],
           'line-width': ['interpolate', ['linear'], ['zoom'], 6, 1.6, 9, 3.2, 12, 5],
@@ -1439,6 +1473,7 @@ function MapView({
         source: 'habitat-zones',
         filter: ['==', ['get', 'shape'], 'point'],
         minzoom: 6.4,
+        layout: { visibility: 'none' },
         paint: {
           'circle-color': ['get', 'color'],
           'circle-radius': ['interpolate', ['linear'], ['zoom'], 6.4, 4, 9, 8, 12, 12],
@@ -1453,6 +1488,7 @@ function MapView({
         source: 'habitat-zones',
         minzoom: 8.2,
         layout: {
+          'visibility': 'none',
           'text-field': ['concat', ['get', 'label'], ' · ', ['get', 'target']],
           'text-size': ['interpolate', ['linear'], ['zoom'], 8.2, 10, 11, 12],
           'text-font': ['Open Sans Bold'],
@@ -1606,7 +1642,7 @@ function MapView({
         const props = feature?.properties ?? {}
         new maplibregl.Popup({ closeButton: false, maxWidth: '280px' })
           .setLngLat(event.lngLat)
-          .setHTML(`<div class="map-popup"><strong>${props.label ?? '地形信号'}</strong><span>推荐目标：${props.target ?? '待分析'}</span><p>${props.note ?? '地形匹配层，后续继续用 CHS NONNA/GEBCO 派生坡度与底质。'}</p></div>`)
+          .setHTML(`<div class="map-popup"><strong>${props.label ?? '地形信号'}</strong><span>示意层：${props.target ?? '待分析'}</span><p>${props.note ?? '地形匹配层还未接入真实底质，暂不作为鱼种推荐依据。'}</p></div>`)
           .addTo(map)
       }
       map.on('click', 'habitat-zone-line', showHabitatPopup)
@@ -1799,7 +1835,7 @@ function MapView({
         <div className="map-layer-toggles" aria-label="地图智能图层">
           <button className={showDepth ? 'active' : ''} onClick={() => setShowDepth((value) => !value)} type="button">深度</button>
           <button className={showRules ? 'active danger' : 'danger'} onClick={() => setShowRules((value) => !value)} type="button">禁区</button>
-          <button className={showHabitat ? 'active' : ''} onClick={() => setShowHabitat((value) => !value)} type="button">鱼种</button>
+          <button className={showHabitat ? 'active' : ''} onClick={() => setShowHabitat((value) => !value)} type="button">地形待接</button>
         </div>
       </div>
 
@@ -1880,6 +1916,7 @@ function MapView({
           activeStation={activeStation}
           stationMinuteOffset={activeStationMinuteOffset}
           stationMinuteMax={stationMinuteMax(activeStation)}
+          depthInfo={depthInfo}
           onStationMinuteChange={setStationMinuteOffset}
           onSelectStation={(station) => {
             setSelectedStationCode(station.stationCode)
@@ -2316,6 +2353,7 @@ function ForecastDetail({
   activeStation,
   stationMinuteOffset,
   stationMinuteMax,
+  depthInfo,
   onStationMinuteChange,
   onSelectStation,
   isLoading,
@@ -2330,6 +2368,7 @@ function ForecastDetail({
   activeStation?: OfficialStationReading
   stationMinuteOffset: number
   stationMinuteMax: number
+  depthInfo: NonnaDepthInfo
   onStationMinuteChange: (offset: number) => void
   onSelectStation?: (station: OfficialStationReading) => void
   isLoading?: boolean
@@ -2372,9 +2411,19 @@ function ForecastDetail({
     ? `${canada.current.stationName} ${activeCurrentPrediction?.value?.toFixed(1) ?? canada.current.observed?.value?.toFixed(1) ?? '--'} kt`
     : '无附近潮流站'
   const nearbyCurrentStations = canada?.currentStations ?? []
-  const terrain = estimateTerrain(forecast)
+  const depthSummary = depthBand(depthInfo)
   const activeRca = findRcaAtPoint(data.rca, forecast.lng, forecast.lat)
   const matchedRules = data.rules.filter((rule) => rule.status !== 'open').slice(0, 2)
+  const depthValue = depthInfo.status === 'loading'
+    ? '查询中'
+    : depthInfo.status === 'ok'
+      ? `${depthInfo.depthM.toFixed(1)} m`
+      : '无点深'
+  const depthDetail = depthInfo.status === 'ok'
+    ? `${depthInfo.source} · 最近格点 ${depthInfo.distanceKm.toFixed(1)}km`
+    : depthInfo.status === 'loading'
+      ? depthInfo.source
+      : depthInfo.message
   return (
     <div className="panel detail-panel">
       <div className="detail-top">
@@ -2392,16 +2441,16 @@ function ForecastDetail({
       </div>
       <div className="map-intel-strip">
         <div>
-          <strong>{terrain.depthM} m</strong>
-          <span>大概水深 · CHS NONNA/GEBCO</span>
+          <strong>{depthValue}</strong>
+          <span>{depthDetail}</span>
         </div>
         <div>
-          <strong>{terrain.slope}</strong>
-          <span>{terrain.substrate}</span>
+          <strong>{depthSummary.label}</strong>
+          <span>{depthSummary.detail}</span>
         </div>
         <div>
-          <strong>{terrain.target}</strong>
-          <span>{terrain.method}</span>
+          <strong>底质未接入</strong>
+          <span>不再用假沙/礁推荐鱼种</span>
         </div>
         <div className={activeRca ? 'risk-closed' : 'risk-restricted'}>
           <strong>{activeRca ? '命中RCA禁区' : '规则需核对'}</strong>

@@ -9,7 +9,7 @@ async function fetchJson<T>(path: string): Promise<T> {
 }
 
 export async function loadAppData(): Promise<AppData> {
-  const [manifest, forecasts, forecastGrid, rules, warnings, pfma, rca, albacore, bluewater, tasks] =
+  const [manifest, forecasts, forecastGrid, rules, warnings, pfma, rca, albacore, bluewater, depthGrid, tasks] =
     await Promise.all([
       fetchJson<AppData['manifest']>('data/manifest.json'),
       fetchJson<AppData['forecasts']>('data/forecasts.json'),
@@ -20,8 +20,9 @@ export async function loadAppData(): Promise<AppData> {
       fetchJson<AppData['rca']>('data/rockfish-conservation-areas.geojson'),
       fetchJson<AppData['albacore']>('data/albacore.geojson'),
       fetchJson<AppData['bluewater']>('data/bluewater.json'),
+      fetchJson<AppData['depthGrid']>('data/depth-grid.json'),
       fetchJson<AppData['tasks']>('data/task-status.json'),
     ])
 
-  return { manifest, forecasts, forecastGrid, rules, warnings, pfma, rca, albacore, bluewater, tasks }
+  return { manifest, forecasts, forecastGrid, rules, warnings, pfma, rca, albacore, bluewater, depthGrid, tasks }
 }

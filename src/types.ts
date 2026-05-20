@@ -183,6 +183,25 @@ export type BluewaterCell = {
   note: string
 }
 
+export type DepthGridPoint = {
+  id: string
+  lat: number
+  lng: number
+  status: 'ok' | 'nodata' | 'error'
+  depthM?: number
+  rawElevationM?: number
+  message?: string
+}
+
+export type DepthGridCache = {
+  source: string
+  sourceUrl: string
+  resolutionM: number
+  note: string
+  generatedAt: string
+  points: DepthGridPoint[]
+}
+
 export type AppData = {
   manifest: DataManifest
   forecasts: MarinePointForecast[]
@@ -203,5 +222,6 @@ export type AppData = {
   }>
   albacore: GeoJSON.FeatureCollection<GeoJSON.Point, AlbacoreFeatureProperties>
   bluewater: BluewaterCell[]
+  depthGrid: DepthGridCache
   tasks: TaskStatus[]
 }
