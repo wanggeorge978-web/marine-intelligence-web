@@ -70,9 +70,9 @@ const overlayModes: Array<{ id: OverlayMode; label: string; unit: string; icon: 
 ]
 
 const workbenchPanels: Array<{ id: WorkbenchPanel; label: string; icon: typeof Wind }> = [
-  { id: 'forecast', label: '点位预报', icon: CloudSun },
-  { id: 'stations', label: '官方站点', icon: Gauge },
-  { id: 'trust', label: '数据可信度', icon: Database },
+  { id: 'forecast', label: '预报', icon: CloudSun },
+  { id: 'stations', label: '站点', icon: Gauge },
+  { id: 'trust', label: '数据', icon: Database },
 ]
 
 const defaultCenter: [number, number] = [-125.62, 48.89]

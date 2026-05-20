@@ -1544,6 +1544,209 @@
   transform-origin: center;
 }
 
+@media (min-width: 900px) {
+  .map-inspector-window {
+    left: 0;
+    right: 0;
+    top: auto;
+    bottom: 0;
+    width: 100%;
+    height: clamp(250px, 34vh, 330px);
+    max-height: 48vh;
+    min-height: 230px;
+    resize: vertical;
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+    border-radius: 0;
+    box-shadow: 0 -12px 34px rgba(0, 0, 0, 0.22);
+  }
+
+  .forecast-popup::before {
+    display: none;
+  }
+
+  .forecast-popup .workbench-header {
+    grid-template-columns: minmax(300px, 1fr) auto auto;
+    gap: 10px;
+    min-height: 34px;
+    padding: 4px 12px;
+  }
+
+  .forecast-popup .workbench-header > div:first-child {
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+
+  .forecast-popup .workbench-header strong,
+  .forecast-popup .workbench-header span {
+    display: inline;
+  }
+
+  .forecast-popup .workbench-header span {
+    min-width: 0;
+  }
+
+  .forecast-popup .workbench-tabs {
+    border-radius: 999px;
+  }
+
+  .forecast-popup .workbench-tabs button {
+    height: 26px;
+    border-radius: 999px;
+    padding: 0 10px;
+  }
+
+  .forecast-popup .workbench-tabs button svg {
+    display: none;
+  }
+
+  .forecast-popup .detail-panel {
+    padding: 4px 14px 0;
+  }
+
+  .forecast-popup .detail-top {
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) auto;
+    gap: 10px;
+    margin-bottom: 4px;
+  }
+
+  .forecast-popup .detail-top h2 {
+    overflow: hidden;
+    font-size: 15px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .forecast-popup .score-pill {
+    min-width: 44px;
+    padding: 3px 7px;
+  }
+
+  .forecast-popup .score-pill strong {
+    font-size: 18px;
+  }
+
+  .forecast-popup .score-pill span {
+    display: none;
+  }
+
+  .forecast-popup .stats-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+    margin: 3px 0;
+  }
+
+  .forecast-popup .stat-card {
+    min-height: 38px;
+    padding: 4px 8px;
+    border-left-width: 4px;
+  }
+
+  .forecast-popup .stat-card svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .forecast-popup .stat-card strong {
+    font-size: 13px;
+  }
+
+  .forecast-popup .stat-card span,
+  .forecast-popup .stat-card small {
+    font-size: 11px;
+  }
+
+  .forecast-popup .point-panel {
+    display: none;
+  }
+
+  .forecast-popup .station-workbench,
+  .forecast-popup .trust-panel {
+    max-height: 200px;
+    overflow: auto;
+  }
+
+  .time-scrubber {
+    grid-template-columns: minmax(260px, auto) minmax(0, 1fr);
+    gap: 12px;
+    padding: 3px 14px 4px;
+    border-top: 0;
+  }
+
+  .time-scrubber > div {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .time-scrubber strong,
+  .time-scrubber span {
+    display: inline;
+  }
+
+  .time-scrubber strong {
+    white-space: nowrap;
+  }
+
+  .popup-hour-strip {
+    grid-auto-columns: minmax(70px, 78px);
+    gap: 5px;
+    padding: 2px 14px 5px;
+  }
+
+  .popup-hour-strip button {
+    min-height: 42px;
+    gap: 1px;
+    padding: 3px 6px;
+    border-radius: 7px;
+  }
+
+  .popup-hour-strip span {
+    min-width: 24px;
+    padding: 0 5px;
+    font-size: 10px;
+  }
+
+  .seven-day-forecast {
+    margin: 0 14px 8px;
+  }
+
+  .matrix-title {
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding: 5px 8px 4px;
+  }
+
+  .matrix-title span {
+    display: none;
+  }
+
+  .matrix-active-readout {
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 8px;
+    padding: 4px 8px;
+  }
+
+  .matrix-row-label,
+  .matrix-cell {
+    min-height: 20px;
+  }
+
+  .matrix-weather {
+    min-height: 28px;
+  }
+
+  .matrix-arrow {
+    width: 18px;
+    height: 18px;
+    font-size: 14px;
+  }
+}
+
 .api-source-strip {
   display: flex;
   gap: 6px;
