@@ -8,6 +8,7 @@ import {
   Bell,
   CheckCircle2,
   ChevronRight,
+  Clock3,
   CloudSun,
   Database,
   Fish,
@@ -16,11 +17,14 @@ import {
   LocateFixed,
   Map,
   MapPin,
+  Pause,
+  Play,
   Plus,
   RefreshCcw,
   Route,
   Settings,
   ShipWheel,
+  SlidersHorizontal,
   ThermometerSun,
   Trash2,
   Waves,
@@ -1166,7 +1170,9 @@ function MapView({
   const [selectedStationCode, setSelectedStationCode] = useState<string | null>(null)
   const [stationMinuteOffset, setStationMinuteOffset] = useState(0)
   const [inspectorOpen, setInspectorOpen] = useState(true)
-  const [inspectorPoint, setInspectorPoint] = useState({ x: 28, y: 92 })
+  const [inspectorPoint, setInspectorPoint] = useState({ x: 260, y: 108 })
+  const [overlayOpacity, setOverlayOpacity] = useState(74)
+  const [isTimelinePlaying, setIsTimelinePlaying] = useState(false)
 
   const loadPoint = useCallback(async (lng: number, lat: number) => {
     setPointError(null)
@@ -1191,6 +1197,21 @@ function MapView({
   useEffect(() => {
     selectedRef.current = selected
   }, [selected])
+
+  useEffect(() => {
+    setIsTimelinePlaying(false)
+  }, [selected.id])
+
+  useEffect(() => {
+    if (!isTimelinePlaying) return undefined
+    const timer = window.setInterval(() => {
+      setTimelineIndex((index) => {
+        const maxIndex = Math.max(0, selectedRef.current.timeline.length - 1)
+        return index >= maxIndex ? 0 : index + 1
+      })
+    }, 900)
+    return () => window.clearInterval(timer)
+  }, [isTimelinePlaying])
 
   useEffect(() => {
     const move = (event: PointerEvent) => {
@@ -1395,19 +1416,29 @@ function MapView({
   const scoreRiskTone = scoreTone(selected.score)
   const activeTone = overlayTone(mode, selected)
   const layerLabel = overlayModes.find((item) => item.id === mode)?.label ?? '图层'
+  const activeModeMeta = overlayModes.find((item) => item.id === mode) ?? overlayModes[0]
+  const ActiveModeIcon = activeModeMeta.icon
   const canadaStationCount = selected.canadianStations?.currentStations?.length ?? 0
   const okSourceCount = selected.apiSources?.filter((source) => source.status === 'ok').length ?? 0
   const sourceCount = selected.apiSources?.length ?? 0
+  const activeWindDir = activeTimelineSlot?.windDirDeg ?? selected.weather.windDirDeg ?? 0
+  const activeWave = activeTimelineSlot?.waveM ?? selected.marine.waveM
+  const activeWind = activeTimelineSlot?.windKts ?? selected.weather.windKts
+  const activeCurrent = activeTimelineSlot?.currentKts ?? selected.water.currentKts
+  const timelineMax = Math.max(0, selected.timeline.length - 1)
   const mapStyleVars = {
     '--score-color': toneColor(scoreRiskTone),
     '--score-soft': toneSoftColor(scoreRiskTone),
     '--mode-color': toneColor(activeTone),
     '--mode-soft': toneSoftColor(activeTone),
+    '--overlay-opacity': overlayOpacity / 100,
+    '--flow-rotate': `${activeWindDir + activeTimelineIndex * 3}deg`,
   } as React.CSSProperties
 
   return (
     <section className={`windy-map-page ${toneClass(scoreRiskTone)} mode-${toneClass(activeTone)}`} style={mapStyleVars}>
       <div ref={mapNode} className="windy-map-canvas" />
+      <div className="windy-flow-overlay" aria-hidden="true" />
 
       <div className="windy-topbar">
         <div className="windy-search">
@@ -1439,6 +1470,39 @@ function MapView({
         <div className={toneClass(currentTone(selected.water.currentKts))}><strong>{selected.water.currentKts}</strong><span>海流 kt</span></div>
       </div>
 
+      <div className="windy-layer-card">
+        <div className="layer-card-head">
+          <div>
+            <span>当前可视层</span>
+            <strong>{layerLabel}</strong>
+          </div>
+          <ActiveModeIcon size={22} />
+        </div>
+        <div className="layer-readout">
+          <span>{toneLabel(activeTone)}</span>
+          <strong>{mode === 'waves' ? formatMeters(activeWave) : mode === 'current' ? activeCurrent.toFixed(1) : mode === 'wind' ? activeWind.toFixed(0) : activeTimelineSlot?.bite ?? selected.score}</strong>
+          <small>{activeModeMeta.unit}</small>
+        </div>
+        <label className="layer-slider">
+          <span><SlidersHorizontal size={15} />强度</span>
+          <input
+            aria-label="图层可视化强度"
+            max="100"
+            min="18"
+            onInput={(event) => setOverlayOpacity(Number(event.currentTarget.value))}
+            onChange={(event) => setOverlayOpacity(Number(event.target.value))}
+            step="1"
+            type="range"
+            value={overlayOpacity}
+          />
+        </label>
+        <div className="layer-mini-grid">
+          <span>风 {activeWind.toFixed(0)} kt</span>
+          <span>浪 {formatMeters(activeWave)} m</span>
+          <span>流 {activeCurrent.toFixed(1)} kt</span>
+        </div>
+      </div>
+
       <div className="windy-layer-rail">
         <button className="menu-round" title="菜单"><Layers size={24} /></button>
         {overlayModes.map((item) => {
@@ -1456,6 +1520,38 @@ function MapView({
         <div><strong>{layerLabel}</strong><span>{toneLabel(activeTone)}</span></div>
         <i />
         <small>好</small><small>谨慎</small><small>危险</small>
+      </div>
+
+      <div className="windy-playbar">
+        <button
+          aria-label={isTimelinePlaying ? '暂停时间播放' : '播放时间变化'}
+          className="play-button"
+          onClick={() => setIsTimelinePlaying((playing) => !playing)}
+          type="button"
+        >
+          {isTimelinePlaying ? <Pause size={20} /> : <Play size={20} />}
+        </button>
+        <div className="playbar-readout">
+          <Clock3 size={16} />
+          <div>
+            <strong>{formatForecastMoment(activeTimelineSlot?.isoTime, activeTimelineSlot?.time)}</strong>
+            <span>{activeTimelineSlot?.condition ?? selected.weather.condition} · 风 {activeWind.toFixed(0)} kt · 浪 {formatMeters(activeWave)} m · 流 {activeCurrent.toFixed(1)} kt</span>
+          </div>
+        </div>
+        <input
+          aria-label="拖动预报时间轴"
+          max={timelineMax}
+          min="0"
+          onInput={(event) => setTimelineIndex(Number(event.currentTarget.value))}
+          onChange={(event) => setTimelineIndex(Number(event.target.value))}
+          step="1"
+          type="range"
+          value={activeTimelineIndex}
+        />
+        <div className="playbar-score">
+          <span>咬口</span>
+          <strong>{activeTimelineSlot?.bite ?? selected.score}</strong>
+        </div>
       </div>
 
       {(selected.canadianStations?.currentStations?.length ?? 0) > 0 && (
@@ -1533,7 +1629,7 @@ function MapView({
             aria-label="选择预测时间"
             type="range"
             min="0"
-            max={Math.max(0, selected.timeline.length - 1)}
+            max={timelineMax}
             step="1"
             value={activeTimelineIndex}
             onInput={(event) => setTimelineIndex(Number(event.currentTarget.value))}
