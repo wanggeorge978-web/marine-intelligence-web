@@ -523,6 +523,36 @@
   white-space: nowrap;
 }
 
+.map-layer-toggles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.map-layer-toggles button {
+  min-width: 0;
+  min-height: 28px;
+  border: 1px solid #cadbdd;
+  border-radius: 7px;
+  color: #304a51;
+  background: rgba(255, 255, 255, 0.88);
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.map-layer-toggles button.active {
+  color: #ffffff;
+  background: #0e8f8f;
+  border-color: #0e8f8f;
+}
+
+.map-layer-toggles button.danger.active {
+  background: #c91d1d;
+  border-color: #c91d1d;
+}
+
 .windy-playbar {
   position: static;
   display: grid;
@@ -910,6 +940,51 @@
 
 .windy-bottom-sheet .detail-panel .timeline {
   display: none;
+}
+
+.map-intel-strip {
+  display: grid;
+  grid-template-columns: 0.6fr 0.9fr 1fr 1fr;
+  gap: 6px;
+  margin: 4px 0;
+}
+
+.map-intel-strip div {
+  min-width: 0;
+  padding: 6px 8px;
+  border-radius: 8px;
+  color: #18343c;
+  background: rgba(235, 246, 247, 0.92);
+  border: 1px solid #c7dcdf;
+}
+
+.map-intel-strip strong,
+.map-intel-strip span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.map-intel-strip strong {
+  color: #10242b;
+  font-size: 13px;
+}
+
+.map-intel-strip span {
+  margin-top: 2px;
+  color: #587078;
+  font-size: 11px;
+}
+
+.map-intel-strip .risk-restricted {
+  background: #fff5d6;
+  border-color: #e2bf4f;
+}
+
+.map-intel-strip .risk-closed {
+  background: #ffe2e2;
+  border-color: #e99a9a;
 }
 
 .workbench-panel {
@@ -3308,6 +3383,25 @@ select {
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 5px;
     margin-top: 3px;
+  }
+
+  .forecast-popup .map-intel-strip {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 4px;
+    margin: 2px 14px 3px;
+  }
+
+  .forecast-popup .map-intel-strip div {
+    min-height: 24px;
+    padding: 3px 6px;
+  }
+
+  .forecast-popup .map-intel-strip strong {
+    font-size: 12px;
+  }
+
+  .forecast-popup .map-intel-strip span {
+    display: none;
   }
 
   .forecast-popup .stat-card {

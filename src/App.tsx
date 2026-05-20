@@ -1024,6 +1024,108 @@ function selectedPointGeoJson(forecast: ForecastGridCell): GeoJSON.FeatureCollec
   }
 }
 
+function ruleStatusForArea(data: AppData, areaName?: string) {
+  const rule = data.rules.find((item) => areaName && (areaName.includes(item.area) || item.area.includes(areaName.replace(' 样例区', ''))))
+  return rule?.status ?? 'restricted'
+}
+
+function regulationGeoJson(data: AppData): GeoJSON.FeatureCollection<GeoJSON.Geometry> {
+  const pfmaFeatures = data.pfma.features.map((feature) => {
+    const name = feature.properties?.name ?? '管理区'
+    const status = ruleStatusForArea(data, name)
+    const rule = data.rules.find((item) => name.includes(item.area) || item.area.includes(name.replace(' 样例区', '')))
+    return {
+      ...feature,
+      properties: {
+        id: feature.properties?.id,
+        name,
+        kind: 'PFMA',
+        status,
+        label: status === 'closed' ? '关闭' : status === 'restricted' ? '限制' : '开放',
+        summary: rule?.summary ?? '管理区边界。出海前请核对 DFO 官方公告。',
+      },
+    }
+  })
+
+  const closureFeatures: GeoJSON.Feature<GeoJSON.Polygon>[] = [
+    {
+      type: 'Feature',
+      properties: {
+        id: 'rca-preview-saltspring',
+        name: 'RCA / 岩鱼保护区预警',
+        kind: 'RCA',
+        status: 'closed',
+        label: '禁区',
+        summary: '岩鱼保护区内通常禁止或严格限制底鱼/鳍鱼作业；此为内测预警层，需接入 DFO 官方 RCA 边界校验。',
+      },
+      geometry: {
+        type: 'Polygon',
+        coordinates: [[[-123.67, 48.73], [-123.50, 48.73], [-123.50, 48.89], [-123.67, 48.89], [-123.67, 48.73]]],
+      },
+    },
+    {
+      type: 'Feature',
+      properties: {
+        id: 'shellfish-preview-bay',
+        name: '贝类采捕关闭预警',
+        kind: 'Shellfish',
+        status: 'restricted',
+        label: '限制',
+        summary: '贝类、蟹、虾相关采捕需要核对污染、红潮和临时关闭公告。',
+      },
+      geometry: {
+        type: 'Polygon',
+        coordinates: [[[-125.56, 48.73], [-124.95, 48.73], [-124.95, 49.10], [-125.56, 49.10], [-125.56, 48.73]]],
+      },
+    },
+  ]
+
+  return {
+    type: 'FeatureCollection',
+    features: [...pfmaFeatures, ...closureFeatures],
+  }
+}
+
+function habitatGeoJson(): GeoJSON.FeatureCollection<GeoJSON.Polygon> {
+  return {
+    type: 'FeatureCollection',
+    features: [
+      {
+        type: 'Feature',
+        properties: { habitat: 'sand_mud', label: '沙泥底 · Sole', target: 'sole / flounder', color: '#d6b95d' },
+        geometry: { type: 'Polygon', coordinates: [[[-123.95, 48.85], [-123.32, 48.85], [-123.32, 49.18], [-123.95, 49.18], [-123.95, 48.85]]] },
+      },
+      {
+        type: 'Feature',
+        properties: { habitat: 'reef_edge', label: '礁边 · Rockfish', target: 'rockfish / lingcod', color: '#7b5d49' },
+        geometry: { type: 'Polygon', coordinates: [[[-125.82, 48.55], [-125.25, 48.55], [-125.25, 49.06], [-125.82, 49.06], [-125.82, 48.55]]] },
+      },
+      {
+        type: 'Feature',
+        properties: { habitat: 'channel_edge', label: '水道边 · Halibut', target: 'halibut / lingcod', color: '#5a86b8' },
+        geometry: { type: 'Polygon', coordinates: [[[-124.70, 48.62], [-123.92, 48.62], [-123.92, 49.05], [-124.70, 49.05], [-124.70, 48.62]]] },
+      },
+      {
+        type: 'Feature',
+        properties: { habitat: 'offshore_break', label: '外海断层 · Tuna', target: 'albacore / tuna', color: '#1b86a6' },
+        geometry: { type: 'Polygon', coordinates: [[[-126.45, 48.30], [-125.70, 48.30], [-125.70, 48.92], [-126.45, 48.92], [-126.45, 48.30]]] },
+      },
+    ],
+  }
+}
+
+function estimateTerrain(forecast: ForecastGridCell) {
+  const offshoreFactor = Math.max(0, Math.min(1, (Math.abs(forecast.lng + 123.15) + Math.abs(forecast.lat - 49.1) * 0.7) / 2.1))
+  const waveFactor = Math.min(1, (forecast.marine.waveM ?? 0) / 3)
+  const currentFactor = Math.min(1, forecast.water.currentKts / 3)
+  const depthM = Math.max(8, Math.round(10 + offshoreFactor * 155 + waveFactor * 22))
+  const slope = depthM > 95 || currentFactor > 0.58 ? '陡坎/水道边' : depthM > 45 ? '缓坡/结构边' : '浅中水沙泥底'
+  const substrate = depthM < 45 ? 'sand / mud' : depthM < 95 ? 'mixed gravel / rock edge' : 'deep rock / channel'
+  const target = depthM < 45 ? 'sole / flounder' : depthM < 95 ? 'halibut / lingcod' : 'rockfish / offshore search'
+  const method = depthM < 45 ? '轻铅底钓、慢漂' : depthM < 95 ? '漂流底钓、结构边搜索' : '重铅 jigging，谨慎控线'
+  return { depthM, slope, substrate, target, method }
+}
+
 function stationPredictionAt(station: OfficialStationReading, isoTime?: string) {
   const series = station.predictionSeries ?? []
   if (!series.length || !isoTime) return station.prediction
@@ -1151,9 +1253,11 @@ function Shell({ page, setPage, children }: { page: PageId; setPage: (page: Page
 }
 
 function MapView({
+  data,
   selected,
   setSelected,
 }: {
+  data: AppData
   selected: ForecastGridCell
   setSelected: (forecast: ForecastGridCell) => void
 }) {
@@ -1173,6 +1277,9 @@ function MapView({
   const [inspectorPoint, setInspectorPoint] = useState({ x: 260, y: 108 })
   const [overlayOpacity, setOverlayOpacity] = useState(74)
   const [isTimelinePlaying, setIsTimelinePlaying] = useState(false)
+  const [showDepth, setShowDepth] = useState(true)
+  const [showRules, setShowRules] = useState(true)
+  const [showHabitat, setShowHabitat] = useState(true)
 
   const loadPoint = useCallback(async (lng: number, lat: number) => {
     setPointError(null)
@@ -1249,6 +1356,96 @@ function MapView({
       const initialSelected = selectedRef.current
       const initialTone = scoreTone(initialSelected.score)
       map.addSource('selected-forecast-point', { type: 'geojson', data: selectedPointGeoJson(initialSelected) })
+      map.addSource('nonna-bathymetry', {
+        type: 'raster',
+        tiles: [
+          'https://nonna-geoserver.data.chs-shc.ca/geoserver/wms?service=WMS&version=1.1.1&request=GetMap&layers=nonna%3ANONNA%20100&styles=&format=image/png&transparent=true&srs=EPSG%3A3857&bbox={bbox-epsg-3857}&width=256&height=256',
+        ],
+        tileSize: 256,
+        attribution: 'CHS NONNA bathymetry, non-navigation',
+      })
+      map.addLayer({
+        id: 'nonna-bathymetry',
+        type: 'raster',
+        source: 'nonna-bathymetry',
+        paint: {
+          'raster-opacity': 0.58,
+          'raster-saturation': 0.12,
+          'raster-contrast': 0.12,
+        },
+      })
+      map.addSource('habitat-zones', { type: 'geojson', data: habitatGeoJson() })
+      map.addLayer({
+        id: 'habitat-zone-fill',
+        type: 'fill',
+        source: 'habitat-zones',
+        paint: {
+          'fill-color': ['get', 'color'],
+          'fill-opacity': 0.18,
+        },
+      })
+      map.addLayer({
+        id: 'habitat-zone-line',
+        type: 'line',
+        source: 'habitat-zones',
+        paint: {
+          'line-color': ['get', 'color'],
+          'line-width': 1.4,
+          'line-dasharray': [2, 2],
+        },
+      })
+      map.addLayer({
+        id: 'habitat-zone-label',
+        type: 'symbol',
+        source: 'habitat-zones',
+        layout: {
+          'text-field': ['get', 'label'],
+          'text-size': 12,
+          'text-font': ['Open Sans Bold'],
+          'text-allow-overlap': false,
+        },
+        paint: {
+          'text-color': '#173238',
+          'text-halo-color': '#ffffff',
+          'text-halo-width': 1.6,
+        },
+      })
+      map.addSource('regulation-zones', { type: 'geojson', data: regulationGeoJson(data) })
+      map.addLayer({
+        id: 'regulation-zone-fill',
+        type: 'fill',
+        source: 'regulation-zones',
+        paint: {
+          'fill-color': ['match', ['get', 'status'], 'closed', '#d7191c', 'restricted', '#ff8f00', 'open', '#00a66c', '#ff8f00'],
+          'fill-opacity': ['match', ['get', 'status'], 'closed', 0.24, 'restricted', 0.16, 0.07],
+        },
+      })
+      map.addLayer({
+        id: 'regulation-zone-line',
+        type: 'line',
+        source: 'regulation-zones',
+        paint: {
+          'line-color': ['match', ['get', 'status'], 'closed', '#d7191c', 'restricted', '#ff8f00', 'open', '#00a66c', '#ff8f00'],
+          'line-width': ['match', ['get', 'status'], 'closed', 3, 2],
+          'line-dasharray': ['match', ['get', 'status'], 'closed', ['literal', [1, 1]], ['literal', [3, 2]]],
+        },
+      })
+      map.addLayer({
+        id: 'regulation-zone-label',
+        type: 'symbol',
+        source: 'regulation-zones',
+        layout: {
+          'text-field': ['concat', ['get', 'label'], ' · ', ['get', 'name']],
+          'text-size': 12,
+          'text-font': ['Open Sans Bold'],
+          'text-allow-overlap': false,
+        },
+        paint: {
+          'text-color': ['match', ['get', 'status'], 'closed', '#9b1114', 'restricted', '#9a5200', '#007c55'],
+          'text-halo-color': '#ffffff',
+          'text-halo-width': 1.8,
+        },
+      })
       map.addLayer({
         id: 'selected-forecast-halo',
         type: 'circle',
@@ -1337,8 +1534,28 @@ function MapView({
       }
       map.on('click', 'canada-current-arrows', showCanadaCurrentPopup)
       map.on('click', 'canada-current-labels', showCanadaCurrentPopup)
+      map.on('click', 'regulation-zone-fill', (event) => {
+        const feature = event.features?.[0]
+        const props = feature?.properties ?? {}
+        new maplibregl.Popup({ closeButton: false, maxWidth: '320px' })
+          .setLngLat(event.lngLat)
+          .setHTML(`<div class="map-popup"><strong>${props.name ?? '规则区'}</strong><span>${props.label ?? '限制'} · ${props.kind ?? 'Area'}</span><p>${props.summary ?? '出海前请核对官方规则。'}</p></div>`)
+          .addTo(map)
+      })
+      map.on('click', 'habitat-zone-fill', (event) => {
+        const feature = event.features?.[0]
+        const props = feature?.properties ?? {}
+        new maplibregl.Popup({ closeButton: false, maxWidth: '280px' })
+          .setLngLat(event.lngLat)
+          .setHTML(`<div class="map-popup"><strong>${props.label ?? '地形区'}</strong><span>推荐目标：${props.target ?? '待分析'}</span><p>内测地形匹配层，后续用 CHS NONNA/GEBCO 派生坡度与底质。</p></div>`)
+          .addTo(map)
+      })
       map.on('mouseenter', 'canada-current-arrows', () => { map.getCanvas().style.cursor = 'pointer' })
       map.on('mouseleave', 'canada-current-arrows', () => { map.getCanvas().style.cursor = '' })
+      map.on('mouseenter', 'regulation-zone-fill', () => { map.getCanvas().style.cursor = 'pointer' })
+      map.on('mouseleave', 'regulation-zone-fill', () => { map.getCanvas().style.cursor = '' })
+      map.on('mouseenter', 'habitat-zone-fill', () => { map.getCanvas().style.cursor = 'pointer' })
+      map.on('mouseleave', 'habitat-zone-fill', () => { map.getCanvas().style.cursor = '' })
       map.on('click', (event) => {
         const currentStationFeatures = map.queryRenderedFeatures(event.point, { layers: ['canada-current-arrows', 'canada-current-labels'] })
         if (currentStationFeatures.length) return
@@ -1351,7 +1568,7 @@ function MapView({
       map.remove()
       mapRef.current = null
     }
-  }, [loadPoint])
+  }, [data, loadPoint])
 
   const activeTimelineIndex = Math.min(timelineIndex, Math.max(0, selected.timeline.length - 1))
   const activeTimelineSlot = selected.timeline[activeTimelineIndex]
@@ -1381,6 +1598,19 @@ function MapView({
       map.setPaintProperty('selected-forecast-dot', 'circle-color', toneColor(tone))
     }
   }, [selected, effectiveStationTimeIso])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    const setVisibility = (ids: string[], visible: boolean) => {
+      ids.forEach((id) => {
+        if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none')
+      })
+    }
+    setVisibility(['nonna-bathymetry'], showDepth)
+    setVisibility(['regulation-zone-fill', 'regulation-zone-line', 'regulation-zone-label'], showRules)
+    setVisibility(['habitat-zone-fill', 'habitat-zone-line', 'habitat-zone-label'], showHabitat)
+  }, [showDepth, showHabitat, showRules])
 
   function searchLocation() {
     const parts = searchText
@@ -1501,6 +1731,11 @@ function MapView({
           <span>浪 {formatMeters(activeWave)} m</span>
           <span>流 {activeCurrent.toFixed(1)} kt</span>
         </div>
+        <div className="map-layer-toggles" aria-label="地图智能图层">
+          <button className={showDepth ? 'active' : ''} onClick={() => setShowDepth((value) => !value)} type="button">深度</button>
+          <button className={showRules ? 'active danger' : 'danger'} onClick={() => setShowRules((value) => !value)} type="button">禁区</button>
+          <button className={showHabitat ? 'active' : ''} onClick={() => setShowHabitat((value) => !value)} type="button">鱼种</button>
+        </div>
       </div>
 
       <div className="windy-layer-rail">
@@ -1603,6 +1838,7 @@ function MapView({
           </div>
         </div>
         <ForecastDetail
+          data={data}
           forecast={selected}
           activeSlot={activeTimelineSlot}
           panel={workbenchPanel}
@@ -2007,6 +2243,7 @@ function CurrentStationDetail({
 }
 
 function ForecastDetail({
+  data,
   forecast,
   activeSlot,
   panel,
@@ -2020,6 +2257,7 @@ function ForecastDetail({
   error,
   onFocusStation,
 }: {
+  data: AppData
   forecast: ForecastGridCell
   activeSlot?: ForecastGridCell['timeline'][number]
   panel: WorkbenchPanel
@@ -2069,6 +2307,8 @@ function ForecastDetail({
     ? `${canada.current.stationName} ${activeCurrentPrediction?.value?.toFixed(1) ?? canada.current.observed?.value?.toFixed(1) ?? '--'} kt`
     : '无附近潮流站'
   const nearbyCurrentStations = canada?.currentStations ?? []
+  const terrain = estimateTerrain(forecast)
+  const matchedRules = data.rules.filter((rule) => rule.status !== 'open').slice(0, 2)
   return (
     <div className="panel detail-panel">
       <div className="detail-top">
@@ -2083,6 +2323,24 @@ function ForecastDetail({
         <StatCard icon={Waves} label="浪" value={`${formatMeters(displayWave)} 米`} detail={`${displayWavePeriod} 秒周期`} tone={waveTone(displayWave)} />
         <StatCard icon={Gauge} label="海流" value={`${displayCurrent} 节`} detail={`${displayCurrentDir} 度 / ${tideName(forecast.water.tide)}`} tone={currentTone(displayCurrent)} />
         <StatCard icon={ThermometerSun} label="水温" value={`${displaySst} C`} detail={forecast.water.clarity} tone={sstTone(displaySst)} />
+      </div>
+      <div className="map-intel-strip">
+        <div>
+          <strong>{terrain.depthM} m</strong>
+          <span>大概水深 · CHS NONNA/GEBCO</span>
+        </div>
+        <div>
+          <strong>{terrain.slope}</strong>
+          <span>{terrain.substrate}</span>
+        </div>
+        <div>
+          <strong>{terrain.target}</strong>
+          <span>{terrain.method}</span>
+        </div>
+        <div className={matchedRules.some((rule) => rule.status === 'closed') ? 'risk-closed' : 'risk-restricted'}>
+          <strong>{matchedRules.some((rule) => rule.status === 'closed') ? '有禁区预警' : '规则需核对'}</strong>
+          <span>{matchedRules.map((rule) => `${rule.area} ${statusName(rule.status)}`).join(' · ') || '当前未命中限制规则'}</span>
+        </div>
       </div>
       {panel === 'forecast' && (
         <div className="workbench-panel point-panel">
@@ -2207,9 +2465,9 @@ function ForecastDetail({
   )
 }
 
-function Dashboard({ selected, setSelected }: { selected: ForecastGridCell; setSelected: (forecast: ForecastGridCell) => void }) {
+function Dashboard({ data, selected, setSelected }: { data: AppData; selected: ForecastGridCell; setSelected: (forecast: ForecastGridCell) => void }) {
   return (
-    <MapView selected={selected} setSelected={setSelected} />
+    <MapView data={data} selected={selected} setSelected={setSelected} />
   )
 }
 
@@ -2427,7 +2685,7 @@ function App() {
 
   return (
     <Shell page={page} setPage={setPage}>
-      {page === 'map' && <Dashboard selected={selected} setSelected={setSelected} />}
+      {page === 'map' && <Dashboard data={data} selected={selected} setSelected={setSelected} />}
       {page === 'rules' && <RulesPage data={data} />}
       {page === 'warnings' && <WarningsPage data={data} />}
       {page === 'bluewater' && <BluewaterPage data={data} />}
