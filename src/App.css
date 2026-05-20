@@ -524,20 +524,18 @@
 }
 
 .windy-playbar {
-  position: absolute;
-  left: 18px;
-  right: 18px;
-  bottom: 16px;
-  z-index: 12;
+  position: static;
   display: grid;
   grid-template-columns: auto minmax(190px, 330px) minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
-  padding: 8px 10px;
-  border-radius: 8px;
+  padding: 6px 16px;
+  border-top: 1px solid rgba(200, 218, 217, 0.68);
+  border-bottom: 1px solid rgba(200, 218, 217, 0.58);
+  border-radius: 0;
   color: #10242b;
-  background: rgba(255, 255, 255, 0.94);
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.24);
+  background: rgba(248, 252, 252, 0.94);
+  box-shadow: none;
   backdrop-filter: blur(14px);
   pointer-events: auto;
 }
@@ -1764,10 +1762,10 @@
     left: 0;
     right: 0;
     top: auto;
-    bottom: 74px;
+    bottom: 0;
     width: 100%;
-    height: clamp(190px, 32vh, 300px);
-    max-height: 42vh;
+    height: clamp(225px, 34vh, 320px);
+    max-height: 44vh;
     min-height: 170px;
     resize: none;
     border: 0;
@@ -1785,6 +1783,11 @@
     gap: 8px;
     min-height: 30px;
     padding: 3px 16px;
+  }
+
+  .forecast-popup .windy-playbar {
+    grid-template-columns: auto minmax(180px, 300px) minmax(0, 1fr) auto;
+    padding: 5px 16px;
   }
 
   .forecast-popup .workbench-header > div:first-child {
@@ -3115,7 +3118,7 @@ select {
     left: 10px;
     right: 10px;
     top: auto;
-    bottom: 86px;
+    bottom: 10px;
     width: auto;
     height: auto;
     max-height: min(34vh, 210px);
@@ -3231,12 +3234,9 @@ select {
   }
 
   .windy-playbar {
-    left: 10px;
-    right: 10px;
-    bottom: 10px;
     grid-template-columns: auto minmax(0, 1fr) auto;
     gap: 8px;
-    padding: 7px 8px;
+    padding: 6px 8px;
   }
 
   .play-button {
@@ -3260,7 +3260,7 @@ select {
 
 @media (min-width: 721px) and (max-height: 620px) {
   .map-inspector-window {
-    bottom: 66px;
+    bottom: 0;
     height: auto;
     min-height: 0;
     max-height: 38vh;
@@ -3336,9 +3336,8 @@ select {
   }
 
   .windy-playbar {
-    bottom: 8px;
     min-height: 46px;
-    padding: 6px 10px;
+    padding: 5px 10px;
   }
 
   .play-button {

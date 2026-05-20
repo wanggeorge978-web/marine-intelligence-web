@@ -1522,38 +1522,6 @@ function MapView({
         <small>好</small><small>谨慎</small><small>危险</small>
       </div>
 
-      <div className="windy-playbar">
-        <button
-          aria-label={isTimelinePlaying ? '暂停时间播放' : '播放时间变化'}
-          className="play-button"
-          onClick={() => setIsTimelinePlaying((playing) => !playing)}
-          type="button"
-        >
-          {isTimelinePlaying ? <Pause size={20} /> : <Play size={20} />}
-        </button>
-        <div className="playbar-readout">
-          <Clock3 size={16} />
-          <div>
-            <strong>{formatForecastMoment(activeTimelineSlot?.isoTime, activeTimelineSlot?.time)}</strong>
-            <span>{activeTimelineSlot?.condition ?? selected.weather.condition} · 风 {activeWind.toFixed(0)} kt · 浪 {formatMeters(activeWave)} m · 流 {activeCurrent.toFixed(1)} kt</span>
-          </div>
-        </div>
-        <input
-          aria-label="拖动预报时间轴"
-          max={timelineMax}
-          min="0"
-          onInput={(event) => setTimelineIndex(Number(event.currentTarget.value))}
-          onChange={(event) => setTimelineIndex(Number(event.target.value))}
-          step="1"
-          type="range"
-          value={activeTimelineIndex}
-        />
-        <div className="playbar-score">
-          <span>咬口</span>
-          <strong>{activeTimelineSlot?.bite ?? selected.score}</strong>
-        </div>
-      </div>
-
       {(selected.canadianStations?.currentStations?.length ?? 0) > 0 && (
         <div className="canada-current-map-note">
           <strong>加拿大潮流站</strong>
@@ -1602,6 +1570,37 @@ function MapView({
           <button className="workbench-close" aria-label="关闭预报窗口" onClick={() => setInspectorOpen(false)}>
             <X size={18} />
           </button>
+        </div>
+        <div className="windy-playbar">
+          <button
+            aria-label={isTimelinePlaying ? '暂停时间播放' : '播放时间变化'}
+            className="play-button"
+            onClick={() => setIsTimelinePlaying((playing) => !playing)}
+            type="button"
+          >
+            {isTimelinePlaying ? <Pause size={20} /> : <Play size={20} />}
+          </button>
+          <div className="playbar-readout">
+            <Clock3 size={16} />
+            <div>
+              <strong>{formatForecastMoment(activeTimelineSlot?.isoTime, activeTimelineSlot?.time)}</strong>
+              <span>{activeTimelineSlot?.condition ?? selected.weather.condition} · 风 {activeWind.toFixed(0)} kt · 浪 {formatMeters(activeWave)} m · 流 {activeCurrent.toFixed(1)} kt</span>
+            </div>
+          </div>
+          <input
+            aria-label="拖动预报时间轴"
+            max={timelineMax}
+            min="0"
+            onInput={(event) => setTimelineIndex(Number(event.currentTarget.value))}
+            onChange={(event) => setTimelineIndex(Number(event.target.value))}
+            step="1"
+            type="range"
+            value={activeTimelineIndex}
+          />
+          <div className="playbar-score">
+            <span>咬口</span>
+            <strong>{activeTimelineSlot?.bite ?? selected.score}</strong>
+          </div>
         </div>
         <ForecastDetail
           forecast={selected}
