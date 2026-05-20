@@ -1059,29 +1059,102 @@ function findRcaAtPoint(data: AppData['rca'], lng: number, lat: number) {
   return data.features.find((feature) => pointInGeometry(lng, lat, feature.geometry))
 }
 
-function habitatGeoJson(): GeoJSON.FeatureCollection<GeoJSON.Polygon> {
+function habitatGeoJson(): GeoJSON.FeatureCollection<GeoJSON.Geometry> {
   return {
     type: 'FeatureCollection',
     features: [
       {
         type: 'Feature',
-        properties: { habitat: 'sand_mud', label: '沙泥底 · Sole', target: 'sole / flounder', color: '#d6b95d' },
-        geometry: { type: 'Polygon', coordinates: [[[-123.95, 48.85], [-123.32, 48.85], [-123.32, 49.18], [-123.95, 49.18], [-123.95, 48.85]]] },
+        properties: {
+          shape: 'line',
+          habitat: 'reef_edge',
+          label: '礁边结构',
+          target: 'rockfish / lingcod',
+          note: '硬底、陡坎和礁边更适合结构鱼；需同时核对 RCA。',
+          color: '#7a4f3a',
+        },
+        geometry: {
+          type: 'LineString',
+          coordinates: [[-125.78, 48.55], [-125.63, 48.66], [-125.47, 48.79], [-125.35, 48.95], [-125.18, 49.05]],
+        },
       },
       {
         type: 'Feature',
-        properties: { habitat: 'reef_edge', label: '礁边 · Rockfish', target: 'rockfish / lingcod', color: '#7b5d49' },
-        geometry: { type: 'Polygon', coordinates: [[[-125.82, 48.55], [-125.25, 48.55], [-125.25, 49.06], [-125.82, 49.06], [-125.82, 48.55]]] },
+        properties: {
+          shape: 'line',
+          habitat: 'channel_edge',
+          label: '水道边',
+          target: 'halibut / lingcod',
+          note: '水道边和缓坡适合顺流搜索，强流时控线难度会上升。',
+          color: '#356f9a',
+        },
+        geometry: {
+          type: 'LineString',
+          coordinates: [[-124.72, 48.66], [-124.52, 48.73], [-124.33, 48.84], [-124.10, 48.98], [-123.90, 49.04]],
+        },
       },
       {
         type: 'Feature',
-        properties: { habitat: 'channel_edge', label: '水道边 · Halibut', target: 'halibut / lingcod', color: '#5a86b8' },
-        geometry: { type: 'Polygon', coordinates: [[[-124.70, 48.62], [-123.92, 48.62], [-123.92, 49.05], [-124.70, 49.05], [-124.70, 48.62]]] },
+        properties: {
+          shape: 'line',
+          habitat: 'offshore_break',
+          label: '外海温跃/断层搜索线',
+          target: 'albacore / tuna',
+          note: '远海搜索线只做方向参考，必须叠加天气窗口、油量和返程风险。',
+          color: '#0f7f9b',
+        },
+        geometry: {
+          type: 'LineString',
+          coordinates: [[-126.42, 48.33], [-126.26, 48.48], [-126.02, 48.62], [-125.82, 48.78], [-125.70, 48.92]],
+        },
       },
       {
         type: 'Feature',
-        properties: { habitat: 'offshore_break', label: '外海断层 · Tuna', target: 'albacore / tuna', color: '#1b86a6' },
-        geometry: { type: 'Polygon', coordinates: [[[-126.45, 48.30], [-125.70, 48.30], [-125.70, 48.92], [-126.45, 48.92], [-126.45, 48.30]]] },
+        properties: {
+          shape: 'point',
+          habitat: 'sand_mud',
+          label: '沙泥底',
+          target: 'sole / flounder',
+          note: '平缓沙泥底更适合 sole/flounder 底钓，优先看缓流窗口。',
+          color: '#b69b34',
+        },
+        geometry: { type: 'Point', coordinates: [-123.58, 49.06] },
+      },
+      {
+        type: 'Feature',
+        properties: {
+          shape: 'point',
+          habitat: 'sand_mud',
+          label: '沙泥底',
+          target: 'sole / flounder',
+          note: '平缓沙泥底更适合 sole/flounder 底钓，优先看缓流窗口。',
+          color: '#b69b34',
+        },
+        geometry: { type: 'Point', coordinates: [-123.84, 48.97] },
+      },
+      {
+        type: 'Feature',
+        properties: {
+          shape: 'point',
+          habitat: 'reef_edge',
+          label: '礁边',
+          target: 'rockfish / lingcod',
+          note: '结构边适合 jigging/底钓，但 RCA 和保护区必须优先核对。',
+          color: '#7a4f3a',
+        },
+        geometry: { type: 'Point', coordinates: [-125.22, 48.78] },
+      },
+      {
+        type: 'Feature',
+        properties: {
+          shape: 'point',
+          habitat: 'channel_edge',
+          label: '水道边',
+          target: 'halibut / lingcod',
+          note: '水道边更吃潮流节奏，强流时不适合轻装备。',
+          color: '#356f9a',
+        },
+        geometry: { type: 'Point', coordinates: [-124.16, 48.86] },
       },
     ],
   }
@@ -1094,7 +1167,7 @@ function estimateTerrain(forecast: ForecastGridCell) {
   const depthM = Math.max(8, Math.round(10 + offshoreFactor * 155 + waveFactor * 22))
   const slope = depthM > 95 || currentFactor > 0.58 ? '陡坎/水道边' : depthM > 45 ? '缓坡/结构边' : '浅中水沙泥底'
   const substrate = depthM < 45 ? 'sand / mud' : depthM < 95 ? 'mixed gravel / rock edge' : 'deep rock / channel'
-  const target = depthM < 45 ? 'sole / flounder' : depthM < 95 ? 'halibut / lingcod' : 'rockfish / offshore search'
+  const target = depthM < 45 ? 'Sole' : depthM < 95 ? 'Halibut / Lingcod' : 'Rockfish'
   const method = depthM < 45 ? '轻铅底钓、慢漂' : depthM < 95 ? '漂流底钓、结构边搜索' : '重铅 jigging，谨慎控线'
   return { depthM, slope, substrate, target, method }
 }
@@ -1349,37 +1422,45 @@ function MapView({
       })
       map.addSource('habitat-zones', { type: 'geojson', data: habitatGeoJson() })
       map.addLayer({
-        id: 'habitat-zone-fill',
-        type: 'fill',
-        source: 'habitat-zones',
-        paint: {
-          'fill-color': ['get', 'color'],
-          'fill-opacity': 0.10,
-        },
-      })
-      map.addLayer({
         id: 'habitat-zone-line',
         type: 'line',
         source: 'habitat-zones',
+        filter: ['==', ['get', 'shape'], 'line'],
         paint: {
           'line-color': ['get', 'color'],
-          'line-width': 1.1,
-          'line-opacity': 0.7,
-          'line-dasharray': [3, 3],
+          'line-width': ['interpolate', ['linear'], ['zoom'], 6, 1.6, 9, 3.2, 12, 5],
+          'line-opacity': ['interpolate', ['linear'], ['zoom'], 5.8, 0.34, 9, 0.74],
+          'line-blur': ['interpolate', ['linear'], ['zoom'], 6, 0.5, 10, 0],
+        },
+      })
+      map.addLayer({
+        id: 'habitat-zone-point',
+        type: 'circle',
+        source: 'habitat-zones',
+        filter: ['==', ['get', 'shape'], 'point'],
+        minzoom: 6.4,
+        paint: {
+          'circle-color': ['get', 'color'],
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 6.4, 4, 9, 8, 12, 12],
+          'circle-opacity': 0.86,
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 6.4, 1.2, 10, 2.2],
         },
       })
       map.addLayer({
         id: 'habitat-zone-label',
         type: 'symbol',
         source: 'habitat-zones',
+        minzoom: 8.2,
         layout: {
-          'text-field': ['get', 'label'],
-          'text-size': ['interpolate', ['linear'], ['zoom'], 6, 10, 9, 12],
+          'text-field': ['concat', ['get', 'label'], ' · ', ['get', 'target']],
+          'text-size': ['interpolate', ['linear'], ['zoom'], 8.2, 10, 11, 12],
           'text-font': ['Open Sans Bold'],
+          'text-offset': [0, 1.1],
           'text-allow-overlap': false,
         },
         paint: {
-          'text-color': '#173238',
+          'text-color': '#18343c',
           'text-halo-color': '#ffffff',
           'text-halo-width': 1.6,
         },
@@ -1483,6 +1564,7 @@ function MapView({
         id: 'canada-current-labels',
         type: 'symbol',
         source: 'canada-current-stations',
+        minzoom: 8.5,
         layout: {
           'text-field': ['concat', ['get', 'label'], ' · ', ['get', 'code']],
           'text-size': 12,
@@ -1519,23 +1601,27 @@ function MapView({
           .setHTML(`<div class="map-popup"><strong>${props.name ?? 'Rockfish Conservation Area'}</strong><span>${props.label ?? 'RCA禁区'} · ${props.kind ?? 'RCA'}${areaText}</span><p>${props.summary ?? 'DFO Rockfish Conservation Area。出海前请核对官方规则。'}</p></div>`)
           .addTo(map)
       })
-      map.on('click', 'habitat-zone-fill', (event) => {
+      const showHabitatPopup = (event: maplibregl.MapLayerMouseEvent) => {
         const feature = event.features?.[0]
         const props = feature?.properties ?? {}
         new maplibregl.Popup({ closeButton: false, maxWidth: '280px' })
           .setLngLat(event.lngLat)
-          .setHTML(`<div class="map-popup"><strong>${props.label ?? '地形区'}</strong><span>推荐目标：${props.target ?? '待分析'}</span><p>内测地形匹配层，后续用 CHS NONNA/GEBCO 派生坡度与底质。</p></div>`)
+          .setHTML(`<div class="map-popup"><strong>${props.label ?? '地形信号'}</strong><span>推荐目标：${props.target ?? '待分析'}</span><p>${props.note ?? '地形匹配层，后续继续用 CHS NONNA/GEBCO 派生坡度与底质。'}</p></div>`)
           .addTo(map)
-      })
+      }
+      map.on('click', 'habitat-zone-line', showHabitatPopup)
+      map.on('click', 'habitat-zone-point', showHabitatPopup)
       map.on('mouseenter', 'canada-current-arrows', () => { map.getCanvas().style.cursor = 'pointer' })
       map.on('mouseleave', 'canada-current-arrows', () => { map.getCanvas().style.cursor = '' })
       map.on('mouseenter', 'regulation-zone-fill', () => { map.getCanvas().style.cursor = 'pointer' })
       map.on('mouseleave', 'regulation-zone-fill', () => { map.getCanvas().style.cursor = '' })
-      map.on('mouseenter', 'habitat-zone-fill', () => { map.getCanvas().style.cursor = 'pointer' })
-      map.on('mouseleave', 'habitat-zone-fill', () => { map.getCanvas().style.cursor = '' })
+      map.on('mouseenter', 'habitat-zone-line', () => { map.getCanvas().style.cursor = 'pointer' })
+      map.on('mouseleave', 'habitat-zone-line', () => { map.getCanvas().style.cursor = '' })
+      map.on('mouseenter', 'habitat-zone-point', () => { map.getCanvas().style.cursor = 'pointer' })
+      map.on('mouseleave', 'habitat-zone-point', () => { map.getCanvas().style.cursor = '' })
       map.on('click', (event) => {
         const handledFeatures = map.queryRenderedFeatures(event.point, {
-          layers: ['canada-current-arrows', 'canada-current-labels', 'regulation-zone-fill', 'habitat-zone-fill'],
+          layers: ['canada-current-arrows', 'canada-current-labels', 'regulation-zone-fill', 'habitat-zone-line', 'habitat-zone-point'],
         })
         if (handledFeatures.length) return
         setInspectorPoint({ x: event.point.x, y: event.point.y })
@@ -1588,7 +1674,7 @@ function MapView({
     }
     setVisibility(['nonna-bathymetry'], showDepth)
     setVisibility(['regulation-zone-fill', 'regulation-zone-line', 'regulation-zone-label'], showRules)
-    setVisibility(['habitat-zone-fill', 'habitat-zone-line', 'habitat-zone-label'], showHabitat)
+    setVisibility(['habitat-zone-line', 'habitat-zone-point', 'habitat-zone-label'], showHabitat)
   }, [showDepth, showHabitat, showRules])
 
   function searchLocation() {

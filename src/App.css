@@ -40,23 +40,21 @@
   inset: 0;
   z-index: 1;
   pointer-events: none;
-  opacity: calc(var(--overlay-opacity, 0.72) * 0.62);
+  opacity: calc(var(--overlay-opacity, 0.72) * 0.24);
   background:
-    radial-gradient(circle at 28% 28%, color-mix(in srgb, var(--mode-color, #0e8f8f) 45%, transparent) 0 12%, transparent 34%),
-    radial-gradient(circle at 72% 62%, color-mix(in srgb, var(--mode-color, #0e8f8f) 36%, transparent) 0 10%, transparent 32%),
     repeating-linear-gradient(
       var(--flow-rotate, 35deg),
-      rgba(255, 255, 255, 0) 0 19px,
-      color-mix(in srgb, var(--mode-color, #0e8f8f) 38%, transparent) 20px 22px,
-      rgba(255, 255, 255, 0) 23px 46px
+      rgba(255, 255, 255, 0) 0 27px,
+      color-mix(in srgb, var(--mode-color, #0e8f8f) 28%, transparent) 28px 30px,
+      rgba(255, 255, 255, 0) 31px 64px
     );
   mix-blend-mode: multiply;
-  animation: flowDrift 16s linear infinite;
+  animation: flowDrift 22s linear infinite;
 }
 
 @keyframes flowDrift {
   to {
-    background-position: 120px 80px, -90px 110px, 180px 0;
+    background-position: 180px 0;
   }
 }
 
@@ -736,6 +734,8 @@
   align-items: center;
   column-gap: 8px;
   padding: 5px 8px;
+  border-left-width: 0;
+  background: rgba(250, 253, 253, 0.78);
 }
 
 .forecast-popup .stat-card svg {
@@ -3298,7 +3298,8 @@ select {
     min-height: 34px;
     padding: 4px 6px;
     border-color: rgba(255, 255, 255, 0.12);
-    background: color-mix(in srgb, var(--tone-color, #0e8f8f) 28%, rgba(255, 255, 255, 0.08));
+    border-left-width: 0;
+    background: rgba(255, 255, 255, 0.075);
   }
 
   .forecast-popup .stat-card small {
@@ -3528,6 +3529,8 @@ select {
     align-items: center;
     column-gap: 7px;
     padding: 3px 7px;
+    border-left-width: 0;
+    background: rgba(255, 255, 255, 0.075);
   }
 
   .forecast-popup .stat-card svg {
