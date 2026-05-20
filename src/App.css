@@ -1766,9 +1766,9 @@
     top: auto;
     bottom: 74px;
     width: 100%;
-    height: clamp(260px, 36vh, 360px);
-    max-height: 48vh;
-    min-height: 250px;
+    height: clamp(190px, 32vh, 300px);
+    max-height: 42vh;
+    min-height: 170px;
     resize: none;
     border: 0;
     border-top: 4px solid rgba(20, 121, 132, 0.95);
@@ -1782,9 +1782,9 @@
 
   .forecast-popup .workbench-header {
     grid-template-columns: minmax(360px, 1fr) auto auto;
-    gap: 10px;
-    min-height: 34px;
-    padding: 4px 18px;
+    gap: 8px;
+    min-height: 30px;
+    padding: 3px 16px;
   }
 
   .forecast-popup .workbench-header > div:first-child {
@@ -1818,14 +1818,14 @@
   }
 
   .forecast-popup .detail-panel {
-    padding: 4px 18px 0;
+    padding: 3px 16px 0;
   }
 
   .forecast-popup .detail-top {
     display: grid;
     grid-template-columns: minmax(220px, 1fr) auto;
-    gap: 10px;
-    margin-bottom: 4px;
+    gap: 8px;
+    margin-bottom: 2px;
   }
 
   .forecast-popup .detail-top h2 {
@@ -1850,13 +1850,13 @@
 
   .forecast-popup .stats-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 6px;
-    margin: 3px 0;
+    gap: 5px;
+    margin: 2px 0;
   }
 
   .forecast-popup .stat-card {
-    min-height: 38px;
-    padding: 4px 8px;
+    min-height: 32px;
+    padding: 3px 7px;
     border-left-width: 4px;
   }
 
@@ -1877,7 +1877,7 @@
   .forecast-popup .point-panel {
     grid-template-columns: minmax(300px, 0.6fr) minmax(360px, 1fr) minmax(300px, 0.68fr);
     align-items: stretch;
-    gap: 8px;
+    gap: 6px;
   }
 
   .forecast-popup .point-panel .analysis-strip {
@@ -1894,8 +1894,94 @@
 
   .forecast-popup .station-workbench,
   .forecast-popup .trust-panel {
-    max-height: 200px;
+    max-height: 158px;
     overflow: auto;
+  }
+
+  .forecast-popup .station-workbench {
+    grid-template-columns: minmax(300px, 0.55fr) minmax(360px, 0.9fr) minmax(320px, 0.75fr);
+    align-items: start;
+    padding: 6px 8px;
+  }
+
+  .forecast-popup .station-summary {
+    grid-column: 1;
+    gap: 5px;
+  }
+
+  .forecast-popup .station-summary div,
+  .forecast-popup .analysis-strip div {
+    padding: 4px 7px;
+    border-radius: 7px;
+  }
+
+  .forecast-popup .station-workbench .tide-card {
+    grid-column: 2;
+    grid-row: 1 / 4;
+  }
+
+  .forecast-popup .current-station-detail {
+    grid-column: 3;
+    grid-row: 1 / 5;
+    gap: 5px;
+    padding: 6px;
+  }
+
+  .forecast-popup .station-grid {
+    grid-column: 1;
+    grid-template-columns: 1fr;
+    gap: 5px;
+    margin-top: 0;
+  }
+
+  .forecast-popup .station-card {
+    gap: 1px;
+    padding: 5px 7px;
+    border-left-width: 4px;
+  }
+
+  .forecast-popup .station-list {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 5px;
+  }
+
+  .forecast-popup .station-list button {
+    min-height: 44px;
+    padding: 5px 7px;
+    border-left-width: 4px;
+  }
+
+  .forecast-popup .visual-card-head strong,
+  .forecast-popup .current-station-title strong {
+    font-size: 13px;
+  }
+
+  .forecast-popup .current-speed-dial {
+    min-height: 82px;
+  }
+
+  .forecast-popup .dial-arrow {
+    width: 40px;
+    height: 40px;
+  }
+
+  .forecast-popup .current-dial-row {
+    grid-template-columns: 82px minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .forecast-popup .current-curve svg,
+  .forecast-popup .tide-chart {
+    height: 72px;
+  }
+
+  .forecast-popup .event-grid {
+    gap: 4px;
+  }
+
+  .forecast-popup .event-grid span {
+    padding: 3px 5px;
   }
 
   .time-scrubber {
@@ -1907,7 +1993,7 @@
   }
 
   .seven-day-forecast {
-    margin: 5px 18px 10px;
+    margin: 4px 16px 8px;
   }
 
   .matrix-title {
@@ -1927,11 +2013,11 @@
 
   .matrix-row-label,
   .matrix-cell {
-    min-height: 20px;
+    min-height: 18px;
   }
 
   .matrix-weather {
-    min-height: 28px;
+    min-height: 24px;
   }
 
   .matrix-arrow {
@@ -3028,10 +3114,12 @@ select {
   .map-inspector-window {
     left: 10px;
     right: 10px;
-    top: 76px;
-    bottom: 92px;
+    top: auto;
+    bottom: 86px;
     width: auto;
-    max-height: calc(100vh - 178px);
+    height: auto;
+    max-height: min(34vh, 210px);
+    min-height: 0;
     border-radius: 8px;
     resize: none;
   }
@@ -3046,9 +3134,54 @@ select {
   }
 
   .time-scrubber {
-    grid-template-columns: 1fr;
+    display: none;
+  }
+
+  .forecast-popup .detail-panel {
+    padding: 2px 8px 4px;
+  }
+
+  .forecast-popup .detail-top {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .forecast-popup .detail-top h2 {
+    font-size: 13px;
+  }
+
+  .forecast-popup .score-pill {
+    min-width: 42px;
+    padding: 3px 6px;
+  }
+
+  .forecast-popup .stats-grid {
+    grid-template-columns: repeat(4, minmax(76px, 1fr));
     gap: 4px;
-    padding-inline: 14px;
+    overflow-x: auto;
+    margin: 2px 0;
+  }
+
+  .forecast-popup .stat-card {
+    min-height: 34px;
+    padding: 4px 6px;
+  }
+
+  .forecast-popup .stat-card small {
+    display: none;
+  }
+
+  .forecast-popup .point-panel,
+  .forecast-popup .station-workbench,
+  .forecast-popup .trust-panel,
+  .seven-day-forecast,
+  .popup-hour-strip {
+    display: none;
+  }
+
+  .workbench-header {
+    grid-template-columns: minmax(0, 1fr) auto;
+    min-height: 28px;
+    padding: 3px 7px;
   }
 
   .matrix-title,
@@ -3072,6 +3205,22 @@ select {
     white-space: nowrap;
   }
 
+  .workbench-tabs {
+    grid-column: 1 / -1;
+    padding: 2px;
+  }
+
+  .workbench-tabs button {
+    height: 24px;
+    padding: 0 7px;
+    font-size: 12px;
+  }
+
+  .workbench-close {
+    width: 26px;
+    height: 26px;
+  }
+
   .timeline-days {
     min-width: 760px;
   }
@@ -3090,6 +3239,11 @@ select {
     padding: 7px 8px;
   }
 
+  .play-button {
+    width: 38px;
+    height: 38px;
+  }
+
   .windy-playbar input {
     grid-column: 1 / -1;
   }
@@ -3101,5 +3255,98 @@ select {
   .playbar-score {
     min-width: 48px;
     padding-inline: 7px;
+  }
+}
+
+@media (min-width: 721px) and (max-height: 620px) {
+  .map-inspector-window {
+    bottom: 66px;
+    height: auto;
+    min-height: 0;
+    max-height: 38vh;
+  }
+
+  .forecast-popup .workbench-header {
+    grid-template-columns: minmax(190px, 1fr) auto auto;
+    min-height: 28px;
+    padding: 2px 14px;
+  }
+
+  .forecast-popup .workbench-header > div:first-child {
+    gap: 8px;
+  }
+
+  .forecast-popup .workbench-tabs button {
+    height: 24px;
+    padding: 0 8px;
+    font-size: 12px;
+  }
+
+  .forecast-popup .workbench-tabs {
+    grid-column: auto;
+    overflow: visible;
+  }
+
+  .forecast-popup .detail-panel {
+    padding: 2px 14px 4px;
+  }
+
+  .forecast-popup .detail-top {
+    display: none;
+  }
+
+  .forecast-popup .score-pill {
+    min-width: 42px;
+    padding: 2px 6px;
+  }
+
+  .forecast-popup .score-pill strong {
+    font-size: 17px;
+  }
+
+  .forecast-popup .stats-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 5px;
+    margin-top: 3px;
+  }
+
+  .forecast-popup .stat-card {
+    min-height: 30px;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    column-gap: 7px;
+    padding: 3px 7px;
+  }
+
+  .forecast-popup .stat-card svg {
+    grid-row: span 2;
+  }
+
+  .forecast-popup .stat-card small {
+    display: none;
+  }
+
+  .forecast-popup .point-panel,
+  .forecast-popup .station-workbench,
+  .forecast-popup .trust-panel,
+  .seven-day-forecast,
+  .popup-hour-strip,
+  .time-scrubber {
+    display: none;
+  }
+
+  .windy-playbar {
+    bottom: 8px;
+    min-height: 46px;
+    padding: 6px 10px;
+  }
+
+  .play-button {
+    width: 38px;
+    height: 38px;
+  }
+
+  .playbar-score {
+    padding: 4px 8px;
   }
 }
