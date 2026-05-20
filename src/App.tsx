@@ -1024,66 +1024,39 @@ function selectedPointGeoJson(forecast: ForecastGridCell): GeoJSON.FeatureCollec
   }
 }
 
-function ruleStatusForArea(data: AppData, areaName?: string) {
-  const rule = data.rules.find((item) => areaName && (areaName.includes(item.area) || item.area.includes(areaName.replace(' 样例区', ''))))
-  return rule?.status ?? 'restricted'
-}
-
 function regulationGeoJson(data: AppData): GeoJSON.FeatureCollection<GeoJSON.Geometry> {
-  const pfmaFeatures = data.pfma.features.map((feature) => {
-    const name = feature.properties?.name ?? '管理区'
-    const status = ruleStatusForArea(data, name)
-    const rule = data.rules.find((item) => name.includes(item.area) || item.area.includes(name.replace(' 样例区', '')))
-    return {
-      ...feature,
-      properties: {
-        id: feature.properties?.id,
-        name,
-        kind: 'PFMA',
-        status,
-        label: status === 'closed' ? '关闭' : status === 'restricted' ? '限制' : '开放',
-        summary: rule?.summary ?? '管理区边界。出海前请核对 DFO 官方公告。',
-      },
-    }
-  })
-
-  const closureFeatures: GeoJSON.Feature<GeoJSON.Polygon>[] = [
-    {
-      type: 'Feature',
-      properties: {
-        id: 'rca-preview-saltspring',
-        name: 'RCA / 岩鱼保护区预警',
-        kind: 'RCA',
-        status: 'closed',
-        label: '禁区',
-        summary: '岩鱼保护区内通常禁止或严格限制底鱼/鳍鱼作业；此为内测预警层，需接入 DFO 官方 RCA 边界校验。',
-      },
-      geometry: {
-        type: 'Polygon',
-        coordinates: [[[-123.67, 48.73], [-123.50, 48.73], [-123.50, 48.89], [-123.67, 48.89], [-123.67, 48.73]]],
-      },
-    },
-    {
-      type: 'Feature',
-      properties: {
-        id: 'shellfish-preview-bay',
-        name: '贝类采捕关闭预警',
-        kind: 'Shellfish',
-        status: 'restricted',
-        label: '限制',
-        summary: '贝类、蟹、虾相关采捕需要核对污染、红潮和临时关闭公告。',
-      },
-      geometry: {
-        type: 'Polygon',
-        coordinates: [[[-125.56, 48.73], [-124.95, 48.73], [-124.95, 49.10], [-125.56, 49.10], [-125.56, 48.73]]],
-      },
-    },
-  ]
-
   return {
     type: 'FeatureCollection',
-    features: [...pfmaFeatures, ...closureFeatures],
+    features: data.rca.features,
   }
+}
+
+function pointInRing(lng: number, lat: number, ring: GeoJSON.Position[]) {
+  let inside = false
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0]
+    const yi = ring[i][1]
+    const xj = ring[j][0]
+    const yj = ring[j][1]
+    const intersects = ((yi > lat) !== (yj > lat)) && (lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi)
+    if (intersects) inside = !inside
+  }
+  return inside
+}
+
+function pointInPolygon(lng: number, lat: number, polygon: GeoJSON.Position[][]) {
+  if (!polygon.length || !pointInRing(lng, lat, polygon[0])) return false
+  return !polygon.slice(1).some((hole) => pointInRing(lng, lat, hole))
+}
+
+function pointInGeometry(lng: number, lat: number, geometry: GeoJSON.Geometry) {
+  if (geometry.type === 'Polygon') return pointInPolygon(lng, lat, geometry.coordinates)
+  if (geometry.type === 'MultiPolygon') return geometry.coordinates.some((polygon) => pointInPolygon(lng, lat, polygon))
+  return false
+}
+
+function findRcaAtPoint(data: AppData['rca'], lng: number, lat: number) {
+  return data.features.find((feature) => pointInGeometry(lng, lat, feature.geometry))
 }
 
 function habitatGeoJson(): GeoJSON.FeatureCollection<GeoJSON.Polygon> {
@@ -1417,8 +1390,8 @@ function MapView({
         type: 'fill',
         source: 'regulation-zones',
         paint: {
-          'fill-color': ['match', ['get', 'status'], 'closed', '#d7191c', 'restricted', '#ff8f00', 'open', '#00a66c', '#ff8f00'],
-          'fill-opacity': ['match', ['get', 'status'], 'closed', 0.14, 'restricted', 0.10, 0.04],
+          'fill-color': '#d7191c',
+          'fill-opacity': ['interpolate', ['linear'], ['zoom'], 5, 0.10, 8, 0.14, 11, 0.18],
         },
       })
       map.addLayer({
@@ -1426,24 +1399,24 @@ function MapView({
         type: 'line',
         source: 'regulation-zones',
         paint: {
-          'line-color': ['match', ['get', 'status'], 'closed', '#d7191c', 'restricted', '#ff8f00', 'open', '#00a66c', '#ff8f00'],
-          'line-width': ['match', ['get', 'status'], 'closed', 2.2, 1.4],
-          'line-opacity': 0.78,
-          'line-dasharray': ['match', ['get', 'status'], 'closed', ['literal', [1.5, 1.5]], ['literal', [4, 3]]],
+          'line-color': '#b80f16',
+          'line-width': ['interpolate', ['linear'], ['zoom'], 5, 1.3, 9, 2.4, 12, 3.2],
+          'line-opacity': 0.86,
         },
       })
       map.addLayer({
         id: 'regulation-zone-label',
         type: 'symbol',
         source: 'regulation-zones',
+        minzoom: 7.7,
         layout: {
           'text-field': ['concat', ['get', 'label'], ' · ', ['get', 'name']],
-          'text-size': ['interpolate', ['linear'], ['zoom'], 6, 10, 9, 12],
+          'text-size': ['interpolate', ['linear'], ['zoom'], 7.7, 9, 10, 12],
           'text-font': ['Open Sans Bold'],
           'text-allow-overlap': false,
         },
         paint: {
-          'text-color': ['match', ['get', 'status'], 'closed', '#9b1114', 'restricted', '#9a5200', '#007c55'],
+          'text-color': '#921016',
           'text-halo-color': '#ffffff',
           'text-halo-width': 1.8,
         },
@@ -1539,9 +1512,11 @@ function MapView({
       map.on('click', 'regulation-zone-fill', (event) => {
         const feature = event.features?.[0]
         const props = feature?.properties ?? {}
+        const area = Number(props.areaSqKm)
+        const areaText = Number.isFinite(area) && area > 0 ? ` · ${area.toFixed(1)} km²` : ''
         new maplibregl.Popup({ closeButton: false, maxWidth: '320px' })
           .setLngLat(event.lngLat)
-          .setHTML(`<div class="map-popup"><strong>${props.name ?? '规则区'}</strong><span>${props.label ?? '限制'} · ${props.kind ?? 'Area'}</span><p>${props.summary ?? '出海前请核对官方规则。'}</p></div>`)
+          .setHTML(`<div class="map-popup"><strong>${props.name ?? 'Rockfish Conservation Area'}</strong><span>${props.label ?? 'RCA禁区'} · ${props.kind ?? 'RCA'}${areaText}</span><p>${props.summary ?? 'DFO Rockfish Conservation Area。出海前请核对官方规则。'}</p></div>`)
           .addTo(map)
       })
       map.on('click', 'habitat-zone-fill', (event) => {
@@ -1559,8 +1534,10 @@ function MapView({
       map.on('mouseenter', 'habitat-zone-fill', () => { map.getCanvas().style.cursor = 'pointer' })
       map.on('mouseleave', 'habitat-zone-fill', () => { map.getCanvas().style.cursor = '' })
       map.on('click', (event) => {
-        const currentStationFeatures = map.queryRenderedFeatures(event.point, { layers: ['canada-current-arrows', 'canada-current-labels'] })
-        if (currentStationFeatures.length) return
+        const handledFeatures = map.queryRenderedFeatures(event.point, {
+          layers: ['canada-current-arrows', 'canada-current-labels', 'regulation-zone-fill', 'habitat-zone-fill'],
+        })
+        if (handledFeatures.length) return
         setInspectorPoint({ x: event.point.x, y: event.point.y })
         void loadPoint(event.lngLat.lng, event.lngLat.lat)
       })
@@ -2310,6 +2287,7 @@ function ForecastDetail({
     : '无附近潮流站'
   const nearbyCurrentStations = canada?.currentStations ?? []
   const terrain = estimateTerrain(forecast)
+  const activeRca = findRcaAtPoint(data.rca, forecast.lng, forecast.lat)
   const matchedRules = data.rules.filter((rule) => rule.status !== 'open').slice(0, 2)
   return (
     <div className="panel detail-panel">
@@ -2339,9 +2317,9 @@ function ForecastDetail({
           <strong>{terrain.target}</strong>
           <span>{terrain.method}</span>
         </div>
-        <div className={matchedRules.some((rule) => rule.status === 'closed') ? 'risk-closed' : 'risk-restricted'}>
-          <strong>{matchedRules.some((rule) => rule.status === 'closed') ? '有禁区预警' : '规则需核对'}</strong>
-          <span>{matchedRules.map((rule) => `${rule.area} ${statusName(rule.status)}`).join(' · ') || '当前未命中限制规则'}</span>
+        <div className={activeRca ? 'risk-closed' : 'risk-restricted'}>
+          <strong>{activeRca ? '命中RCA禁区' : '规则需核对'}</strong>
+          <span>{activeRca ? `${activeRca.properties.name} · DFO RCA` : matchedRules.map((rule) => `${rule.area} ${statusName(rule.status)}`).join(' · ') || '当前未命中限制规则'}</span>
         </div>
       </div>
       {panel === 'forecast' && (

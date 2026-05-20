@@ -190,6 +190,17 @@ export type AppData = {
   rules: RuleRecord[]
   warnings: GeoJSON.FeatureCollection<GeoJSON.Geometry, WarningFeatureProperties>
   pfma: GeoJSON.FeatureCollection<GeoJSON.Geometry, { id: string; name: string }>
+  rca: GeoJSON.FeatureCollection<GeoJSON.Geometry, {
+    id: string
+    objectId: number
+    name: string
+    areaSqKm: number
+    kind: 'RCA'
+    status: 'closed'
+    label: string
+    summary: string
+    source: string
+  }>
   albacore: GeoJSON.FeatureCollection<GeoJSON.Point, AlbacoreFeatureProperties>
   bluewater: BluewaterCell[]
   tasks: TaskStatus[]
