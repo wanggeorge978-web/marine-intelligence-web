@@ -1761,19 +1761,19 @@
 
 @media (min-width: 900px) {
   .map-inspector-window {
-    left: clamp(18px, calc(var(--popup-x, 28px) + 18px), calc(100vw - 820px));
-    right: auto;
-    top: clamp(82px, calc(var(--popup-y, 92px) - 34px), calc(100vh - 560px));
-    bottom: auto;
-    width: min(780px, calc(100vw - 168px));
-    height: auto;
-    max-height: calc(100vh - 180px);
-    min-height: 0;
-    resize: both;
-    border: 1px solid rgba(190, 211, 211, 0.95);
+    left: 0;
+    right: 0;
+    top: auto;
+    bottom: 74px;
+    width: 100%;
+    height: clamp(260px, 36vh, 360px);
+    max-height: 48vh;
+    min-height: 250px;
+    resize: none;
+    border: 0;
     border-top: 4px solid rgba(20, 121, 132, 0.95);
-    border-radius: 8px;
-    box-shadow: 0 18px 42px rgba(0, 0, 0, 0.24);
+    border-radius: 0;
+    box-shadow: 0 -12px 34px rgba(0, 0, 0, 0.24);
   }
 
   .forecast-popup::before {
@@ -1781,10 +1781,10 @@
   }
 
   .forecast-popup .workbench-header {
-    grid-template-columns: minmax(300px, 1fr) auto auto;
+    grid-template-columns: minmax(360px, 1fr) auto auto;
     gap: 10px;
     min-height: 34px;
-    padding: 4px 12px;
+    padding: 4px 18px;
   }
 
   .forecast-popup .workbench-header > div:first-child {
@@ -1818,7 +1818,7 @@
   }
 
   .forecast-popup .detail-panel {
-    padding: 4px 14px 0;
+    padding: 4px 18px 0;
   }
 
   .forecast-popup .detail-top {
@@ -1875,9 +1875,21 @@
   }
 
   .forecast-popup .point-panel {
-    grid-template-columns: minmax(250px, 0.9fr) minmax(0, 1fr);
+    grid-template-columns: minmax(300px, 0.6fr) minmax(360px, 1fr) minmax(300px, 0.68fr);
     align-items: stretch;
-    gap: 6px;
+    gap: 8px;
+  }
+
+  .forecast-popup .point-panel .analysis-strip {
+    grid-column: 3;
+    grid-row: 1 / 3;
+    grid-template-columns: 1fr;
+    align-content: start;
+  }
+
+  .forecast-popup .point-panel .current-row {
+    grid-column: 2;
+    grid-row: 1;
   }
 
   .forecast-popup .station-workbench,
@@ -1895,7 +1907,7 @@
   }
 
   .seven-day-forecast {
-    margin: 5px 14px 10px;
+    margin: 5px 18px 10px;
   }
 
   .matrix-title {
