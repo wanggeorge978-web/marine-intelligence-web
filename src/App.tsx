@@ -1381,7 +1381,7 @@ function MapView({
         source: 'habitat-zones',
         paint: {
           'fill-color': ['get', 'color'],
-          'fill-opacity': 0.18,
+          'fill-opacity': 0.10,
         },
       })
       map.addLayer({
@@ -1390,8 +1390,9 @@ function MapView({
         source: 'habitat-zones',
         paint: {
           'line-color': ['get', 'color'],
-          'line-width': 1.4,
-          'line-dasharray': [2, 2],
+          'line-width': 1.1,
+          'line-opacity': 0.7,
+          'line-dasharray': [3, 3],
         },
       })
       map.addLayer({
@@ -1400,7 +1401,7 @@ function MapView({
         source: 'habitat-zones',
         layout: {
           'text-field': ['get', 'label'],
-          'text-size': 12,
+          'text-size': ['interpolate', ['linear'], ['zoom'], 6, 10, 9, 12],
           'text-font': ['Open Sans Bold'],
           'text-allow-overlap': false,
         },
@@ -1417,7 +1418,7 @@ function MapView({
         source: 'regulation-zones',
         paint: {
           'fill-color': ['match', ['get', 'status'], 'closed', '#d7191c', 'restricted', '#ff8f00', 'open', '#00a66c', '#ff8f00'],
-          'fill-opacity': ['match', ['get', 'status'], 'closed', 0.24, 'restricted', 0.16, 0.07],
+          'fill-opacity': ['match', ['get', 'status'], 'closed', 0.14, 'restricted', 0.10, 0.04],
         },
       })
       map.addLayer({
@@ -1426,8 +1427,9 @@ function MapView({
         source: 'regulation-zones',
         paint: {
           'line-color': ['match', ['get', 'status'], 'closed', '#d7191c', 'restricted', '#ff8f00', 'open', '#00a66c', '#ff8f00'],
-          'line-width': ['match', ['get', 'status'], 'closed', 3, 2],
-          'line-dasharray': ['match', ['get', 'status'], 'closed', ['literal', [1, 1]], ['literal', [3, 2]]],
+          'line-width': ['match', ['get', 'status'], 'closed', 2.2, 1.4],
+          'line-opacity': 0.78,
+          'line-dasharray': ['match', ['get', 'status'], 'closed', ['literal', [1.5, 1.5]], ['literal', [4, 3]]],
         },
       })
       map.addLayer({
@@ -1436,7 +1438,7 @@ function MapView({
         source: 'regulation-zones',
         layout: {
           'text-field': ['concat', ['get', 'label'], ' · ', ['get', 'name']],
-          'text-size': 12,
+          'text-size': ['interpolate', ['linear'], ['zoom'], 6, 10, 9, 12],
           'text-font': ['Open Sans Bold'],
           'text-allow-overlap': false,
         },
@@ -1806,6 +1808,24 @@ function MapView({
             <X size={18} />
           </button>
         </div>
+        <ForecastDetail
+          data={data}
+          forecast={selected}
+          activeSlot={activeTimelineSlot}
+          panel={workbenchPanel}
+          stationTimeIso={effectiveStationTimeIso}
+          activeStation={activeStation}
+          stationMinuteOffset={activeStationMinuteOffset}
+          stationMinuteMax={stationMinuteMax(activeStation)}
+          onStationMinuteChange={setStationMinuteOffset}
+          onSelectStation={(station) => {
+            setSelectedStationCode(station.stationCode)
+            setStationMinuteOffset(0)
+          }}
+          isLoading={isLoadingPoint}
+          error={pointError}
+          onFocusStation={focusStation}
+        />
         <div className="windy-playbar">
           <button
             aria-label={isTimelinePlaying ? '暂停时间播放' : '播放时间变化'}
@@ -1837,24 +1857,6 @@ function MapView({
             <strong>{activeTimelineSlot?.bite ?? selected.score}</strong>
           </div>
         </div>
-        <ForecastDetail
-          data={data}
-          forecast={selected}
-          activeSlot={activeTimelineSlot}
-          panel={workbenchPanel}
-          stationTimeIso={effectiveStationTimeIso}
-          activeStation={activeStation}
-          stationMinuteOffset={activeStationMinuteOffset}
-          stationMinuteMax={stationMinuteMax(activeStation)}
-          onStationMinuteChange={setStationMinuteOffset}
-          onSelectStation={(station) => {
-            setSelectedStationCode(station.stationCode)
-            setStationMinuteOffset(0)
-          }}
-          isLoading={isLoadingPoint}
-          error={pointError}
-          onFocusStation={focusStation}
-        />
         <div className="time-scrubber">
           <div>
             <strong>预测时间</strong>
