@@ -52,6 +52,7 @@ import type {
 type OverlayMode = 'weather' | 'wind' | 'waves' | 'current' | 'tide' | 'sst'
 type RiskTone = 'excellent' | 'good' | 'fair' | 'poor' | 'danger'
 type WorkbenchPanel = 'forecast' | 'stations' | 'shellfish' | 'trust'
+type ShellfishTarget = 'geoduck' | 'horse_clam' | 'littleneck_clam' | 'manila_clam' | 'butter_clam' | 'pacific_oyster' | 'mussels' | 'sea_cucumber'
 type NonnaDepthInfo =
   | { status: 'loading'; source: string }
   | { status: 'ok'; source: string; depthM: number; rawElevationM: number; resolutionM: number; distanceKm: number }
@@ -85,6 +86,22 @@ const workbenchPanels: Array<{ id: WorkbenchPanel; label: string; icon: typeof W
   { id: 'stations', label: '站点', icon: Gauge },
   { id: 'shellfish', label: '贝类', icon: ShellIcon },
   { id: 'trust', label: '数据', icon: Database },
+]
+
+const shellfishTargets: Array<{
+  id: ShellfishTarget
+  label: string
+  officialNames: string[]
+  dailyLimit?: number
+}> = [
+  { id: 'geoduck', label: '象拔蚌', officialNames: ['Geoduck'], dailyLimit: 3 },
+  { id: 'horse_clam', label: 'Horse clam', officialNames: ['Horse clam'], dailyLimit: 6 },
+  { id: 'littleneck_clam', label: 'Littleneck', officialNames: ['Littleneck clam'], dailyLimit: 60 },
+  { id: 'manila_clam', label: 'Manila', officialNames: ['Manila clam'], dailyLimit: 60 },
+  { id: 'butter_clam', label: 'Butter', officialNames: ['Butter clam'], dailyLimit: 20 },
+  { id: 'pacific_oyster', label: 'Pacific oyster', officialNames: ['Pacific oyster'], dailyLimit: 12 },
+  { id: 'mussels', label: 'Mussels', officialNames: ['Blue mussel', 'California mussel'], dailyLimit: 75 },
+  { id: 'sea_cucumber', label: '海参', officialNames: ['Sea Cucumber'], dailyLimit: 12 },
 ]
 
 const defaultCenter: [number, number] = [-125.85276, 49.097814]
@@ -1076,17 +1093,50 @@ function shellfishFeaturesAtPoint(data: AppData['shellfish'], lng: number, lat: 
   return data.features.filter((feature) => pointInGeometry(lng, lat, feature.geometry))
 }
 
-function findShellfishStatus(data: AppData['shellfish'], lng: number, lat: number) {
+function shellfishTargetMeta(target: ShellfishTarget) {
+  return shellfishTargets.find((item) => item.id === target) ?? shellfishTargets[0]
+}
+
+function speciesListContains(list: string[] | undefined, target: ShellfishTarget) {
+  const officialNames = shellfishTargetMeta(target).officialNames.map((name) => name.toLowerCase())
+  return (list ?? []).some((name) => officialNames.includes(name.toLowerCase()))
+}
+
+function findShellfishStatus(data: AppData['shellfish'], lng: number, lat: number, target: ShellfishTarget) {
+  const targetMeta = shellfishTargetMeta(target)
+  if (target === 'sea_cucumber') {
+    return {
+      tone: 'good' as RiskTone,
+      label: '海参开放',
+      detail: `Area 24: Open / ${data.speciesRules.seaCucumber.dailyLimit} 只`,
+      feature: undefined,
+      matches: [] as AppData['shellfish']['features'],
+      targetMeta,
+    }
+  }
+
   const matches = shellfishFeaturesAtPoint(data, lng, lat)
   const allClosed = matches.find((feature) => feature.properties.status === 'closed-all-bivalves')
-  if (allClosed) return { tone: 'danger' as RiskTone, label: '贝类全关', feature: allClosed, matches }
-  const prohibited = matches.find((feature) => feature.properties.status === 'prohibited')
-  if (prohibited) return { tone: 'danger' as RiskTone, label: 'CSSP禁采', feature: prohibited, matches }
+  if (allClosed) return { tone: 'danger' as RiskTone, label: `${targetMeta.label}关闭`, detail: `${allClosed.properties.name} · ${allClosed.properties.poNum ?? 'DFO CSSP'}`, feature: allClosed, matches, targetMeta }
+
   const speciesLimited = matches.find((feature) => feature.properties.status === 'species-specific-closure')
-  if (speciesLimited) return { tone: 'poor' as RiskTone, label: '物种限制', feature: speciesLimited, matches }
+  if (speciesLimited && speciesListContains(speciesLimited.properties.closedSpecies, target)) {
+    return { tone: 'danger' as RiskTone, label: `${targetMeta.label}关闭`, detail: `${speciesLimited.properties.name} · ${speciesLimited.properties.poNum ?? 'DFO CSSP'}`, feature: speciesLimited, matches, targetMeta }
+  }
+  if (speciesLimited && speciesListContains(speciesLimited.properties.openSpecies, target)) {
+    return { tone: 'good' as RiskTone, label: `${targetMeta.label}候选可采`, detail: `${speciesLimited.properties.name} · ${speciesLimited.properties.poNum ?? 'DFO CSSP'}`, feature: speciesLimited, matches, targetMeta }
+  }
+
+  const prohibited = matches.find((feature) => feature.properties.status === 'prohibited')
+  if (prohibited) return { tone: 'danger' as RiskTone, label: `${targetMeta.label}禁采`, detail: 'CSSP Prohibited classification', feature: prohibited, matches, targetMeta }
+
   const approved = matches.find((feature) => feature.properties.status === 'approved')
-  if (approved) return { tone: 'good' as RiskTone, label: '候选可采', feature: approved, matches }
-  return { tone: 'fair' as RiskTone, label: '需核对DFO', feature: undefined, matches }
+  if (approved) return { tone: 'good' as RiskTone, label: `${targetMeta.label}候选可采`, detail: 'CSSP Approved，仍需核对物种/公园/养殖场', feature: approved, matches, targetMeta }
+
+  const harvestArea = matches.find((feature) => feature.properties.status === 'reference')
+  if (harvestArea) return { tone: 'fair' as RiskTone, label: `${targetMeta.label}需核对`, detail: `${harvestArea.properties.name} · 只有采区边界`, feature: harvestArea, matches, targetMeta }
+
+  return { tone: 'fair' as RiskTone, label: `${targetMeta.label}需核对`, detail: '点击点未命中 CSSP 样本 polygon', feature: undefined, matches, targetMeta }
 }
 
 function shellfishPopupHtml(props: Partial<ShellfishFeatureProperties>) {
@@ -1407,6 +1457,7 @@ function MapView({
   const [inspectorPoint, setInspectorPoint] = useState({ x: 260, y: 108 })
   const [overlayOpacity, setOverlayOpacity] = useState(74)
   const [isTimelinePlaying, setIsTimelinePlaying] = useState(false)
+  const [shellfishTarget, setShellfishTarget] = useState<ShellfishTarget>('geoduck')
   const [showDepth, setShowDepth] = useState(true)
   const [showRules, setShowRules] = useState(true)
   const [showShellfish, setShowShellfish] = useState(true)
@@ -2059,7 +2110,9 @@ function MapView({
           stationMinuteOffset={activeStationMinuteOffset}
           stationMinuteMax={stationMinuteMax(activeStation)}
           depthInfo={depthInfo}
+          shellfishTarget={shellfishTarget}
           onStationMinuteChange={setStationMinuteOffset}
+          onShellfishTargetChange={setShellfishTarget}
           onSelectStation={(station) => {
             setSelectedStationCode(station.stationCode)
             setStationMinuteOffset(0)
@@ -2496,7 +2549,9 @@ function ForecastDetail({
   stationMinuteOffset,
   stationMinuteMax,
   depthInfo,
+  shellfishTarget,
   onStationMinuteChange,
+  onShellfishTargetChange,
   onSelectStation,
   isLoading,
   error,
@@ -2511,7 +2566,9 @@ function ForecastDetail({
   stationMinuteOffset: number
   stationMinuteMax: number
   depthInfo: NonnaDepthInfo
+  shellfishTarget: ShellfishTarget
   onStationMinuteChange: (offset: number) => void
+  onShellfishTargetChange: (target: ShellfishTarget) => void
   onSelectStation?: (station: OfficialStationReading) => void
   isLoading?: boolean
   error?: string | null
@@ -2566,17 +2623,9 @@ function ForecastDetail({
     : depthInfo.status === 'loading'
       ? depthInfo.source
       : depthInfo.message
-  const shellfishStatus = findShellfishStatus(data.shellfish, forecast.lng, forecast.lat)
+  const shellfishStatus = findShellfishStatus(data.shellfish, forecast.lng, forecast.lat, shellfishTarget)
   const shellfishFeature = shellfishStatus.feature?.properties
-  const shellfishDetail = shellfishFeature?.status === 'closed-all-bivalves'
-    ? `${shellfishFeature.name} · ${shellfishFeature.poNum ?? 'DFO CSSP'}`
-    : shellfishFeature?.status === 'species-specific-closure'
-      ? `${shellfishFeature.name} · 看物种`
-      : shellfishFeature?.status === 'prohibited'
-        ? 'CSSP Prohibited classification'
-        : shellfishFeature?.status === 'approved'
-          ? '未命中当前闭区仍需核对'
-          : '样本范围或图层未覆盖'
+  const shellfishDetail = shellfishStatus.detail
   return (
     <div className="panel detail-panel">
       <div className="detail-top">
@@ -2691,6 +2740,18 @@ function ForecastDetail({
               <span>{shellfishDetail}</span>
             </div>
           </div>
+          <div className="shellfish-targets" aria-label="选择贝类/海参目标">
+            {shellfishTargets.map((target) => (
+              <button
+                className={shellfishTarget === target.id ? 'active' : ''}
+                key={target.id}
+                onClick={() => onShellfishTargetChange(target.id)}
+                type="button"
+              >
+                {target.label}
+              </button>
+            ))}
+          </div>
           <div className="shellfish-summary-grid">
             <div>
               <span>当前点</span>
@@ -2698,14 +2759,14 @@ function ForecastDetail({
               <small>样本：Tofino / PFMA Area 24 附近</small>
             </div>
             <div>
-              <span>贝类逻辑</span>
-              <strong>{shellfishFeature?.allBivalvesClosed ? '全贝类关闭' : shellfishFeature?.openSpecies?.length ? '只看候选开放物种' : '必须核对物种'}</strong>
-              <small>DFO CSSP 闭区、多边形分类和 Area 24 规则叠加</small>
+              <span>目标物种</span>
+              <strong>{shellfishStatus.targetMeta.label}</strong>
+              <small>{shellfishStatus.targetMeta.dailyLimit ? `Area 24 日限 ${shellfishStatus.targetMeta.dailyLimit}` : '按 DFO 当前物种规则'}</small>
             </div>
             <div>
-              <span>海参</span>
-              <strong>Area 24: {data.shellfish.speciesRules.seaCucumber.status === 'open' ? 'Open' : 'Closed'} / {data.shellfish.speciesRules.seaCucumber.dailyLimit} 只</strong>
-              <small>{data.shellfish.speciesRules.seaCucumber.gear}</small>
+              <span>判定逻辑</span>
+              <strong>{shellfishFeature?.allBivalvesClosed ? '全贝类关闭' : shellfishStatus.tone === 'danger' ? '目标物种关闭' : shellfishStatus.tone === 'good' ? '目标物种候选可采' : '必须核对官方'}</strong>
+              <small>按目标物种叠加 CSSP 闭区、分类和 DFO Area 24</small>
             </div>
           </div>
           {shellfishFeature?.closedSpecies?.length ? (
