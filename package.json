@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "update:depth": "node scripts/update_depth_grid.mjs"
+    "update:depth": "node scripts/update_depth_grid.mjs",
+    "update:shellfish:tofino": "node scripts/update_tofino_shellfish.mjs"
   },
   "dependencies": {
     "idb": "^8.0.3",

@@ -202,6 +202,52 @@ export type DepthGridCache = {
   points: DepthGridPoint[]
 }
 
+export type ShellfishFeatureProperties = {
+  id: string
+  sourceObjectId: number
+  layerType: 'harvest-area' | 'classification' | 'operational-closure'
+  status: 'reference' | 'approved' | 'prohibited' | 'closed-all-bivalves' | 'species-specific-closure'
+  label: string
+  name: string
+  subarea?: string
+  summary: string
+  source: string
+  sourceUrl: string
+  allBivalvesClosed?: boolean
+  closedSpecies?: string[]
+  openSpecies?: string[]
+  reasonCode?: number
+  publicNoticeUrl?: string
+  poNum?: string
+  issued?: string
+  enforced?: string
+  legalDescription?: string
+}
+
+export type ShellfishData = GeoJSON.FeatureCollection<GeoJSON.Geometry, ShellfishFeatureProperties> & {
+  name: string
+  source: string
+  sourceUrl: string
+  generatedAt: string
+  bbox: number[]
+  note: string
+  area24SourceUrl: string
+  speciesRules: {
+    bivalves: {
+      sourceUpdated: string
+      note: string
+    }
+    seaCucumber: {
+      status: 'open' | 'closed'
+      areas: string
+      gear: string
+      dailyLimit: number
+      sourceUpdated: string
+      warning: string
+    }
+  }
+}
+
 export type AppData = {
   manifest: DataManifest
   forecasts: MarinePointForecast[]
@@ -223,5 +269,6 @@ export type AppData = {
   albacore: GeoJSON.FeatureCollection<GeoJSON.Point, AlbacoreFeatureProperties>
   bluewater: BluewaterCell[]
   depthGrid: DepthGridCache
+  shellfish: ShellfishData
   tasks: TaskStatus[]
 }

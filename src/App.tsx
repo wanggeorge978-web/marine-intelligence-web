@@ -23,6 +23,7 @@ import {
   RefreshCcw,
   Route,
   Settings,
+  Shell as ShellIcon,
   ShipWheel,
   SlidersHorizontal,
   ThermometerSun,
@@ -43,13 +44,14 @@ import type {
   MarinePointForecast,
   OfficialStationReading,
   PageId,
+  ShellfishFeatureProperties,
   UserSpot,
   WarningFeatureProperties,
 } from './types'
 
 type OverlayMode = 'weather' | 'wind' | 'waves' | 'current' | 'tide' | 'sst'
 type RiskTone = 'excellent' | 'good' | 'fair' | 'poor' | 'danger'
-type WorkbenchPanel = 'forecast' | 'stations' | 'trust'
+type WorkbenchPanel = 'forecast' | 'stations' | 'shellfish' | 'trust'
 type NonnaDepthInfo =
   | { status: 'loading'; source: string }
   | { status: 'ok'; source: string; depthM: number; rawElevationM: number; resolutionM: number; distanceKm: number }
@@ -81,10 +83,11 @@ const overlayModes: Array<{ id: OverlayMode; label: string; unit: string; icon: 
 const workbenchPanels: Array<{ id: WorkbenchPanel; label: string; icon: typeof Wind }> = [
   { id: 'forecast', label: '预报', icon: CloudSun },
   { id: 'stations', label: '站点', icon: Gauge },
+  { id: 'shellfish', label: '贝类', icon: ShellIcon },
   { id: 'trust', label: '数据', icon: Database },
 ]
 
-const defaultCenter: [number, number] = [-125.62, 48.89]
+const defaultCenter: [number, number] = [-125.85276, 49.097814]
 
 const mapStyle: maplibregl.StyleSpecification = {
   version: 8,
@@ -1036,6 +1039,10 @@ function regulationGeoJson(data: AppData): GeoJSON.FeatureCollection<GeoJSON.Geo
   }
 }
 
+function shellfishGeoJson(data: AppData): AppData['shellfish'] {
+  return data.shellfish
+}
+
 function pointInRing(lng: number, lat: number, ring: GeoJSON.Position[]) {
   let inside = false
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
@@ -1054,7 +1061,8 @@ function pointInPolygon(lng: number, lat: number, polygon: GeoJSON.Position[][])
   return !polygon.slice(1).some((hole) => pointInRing(lng, lat, hole))
 }
 
-function pointInGeometry(lng: number, lat: number, geometry: GeoJSON.Geometry) {
+function pointInGeometry(lng: number, lat: number, geometry?: GeoJSON.Geometry | null) {
+  if (!geometry) return false
   if (geometry.type === 'Polygon') return pointInPolygon(lng, lat, geometry.coordinates)
   if (geometry.type === 'MultiPolygon') return geometry.coordinates.some((polygon) => pointInPolygon(lng, lat, polygon))
   return false
@@ -1062,6 +1070,54 @@ function pointInGeometry(lng: number, lat: number, geometry: GeoJSON.Geometry) {
 
 function findRcaAtPoint(data: AppData['rca'], lng: number, lat: number) {
   return data.features.find((feature) => pointInGeometry(lng, lat, feature.geometry))
+}
+
+function shellfishFeaturesAtPoint(data: AppData['shellfish'], lng: number, lat: number) {
+  return data.features.filter((feature) => pointInGeometry(lng, lat, feature.geometry))
+}
+
+function findShellfishStatus(data: AppData['shellfish'], lng: number, lat: number) {
+  const matches = shellfishFeaturesAtPoint(data, lng, lat)
+  const allClosed = matches.find((feature) => feature.properties.status === 'closed-all-bivalves')
+  if (allClosed) return { tone: 'danger' as RiskTone, label: '贝类全关', feature: allClosed, matches }
+  const prohibited = matches.find((feature) => feature.properties.status === 'prohibited')
+  if (prohibited) return { tone: 'danger' as RiskTone, label: 'CSSP禁采', feature: prohibited, matches }
+  const speciesLimited = matches.find((feature) => feature.properties.status === 'species-specific-closure')
+  if (speciesLimited) return { tone: 'poor' as RiskTone, label: '物种限制', feature: speciesLimited, matches }
+  const approved = matches.find((feature) => feature.properties.status === 'approved')
+  if (approved) return { tone: 'good' as RiskTone, label: '候选可采', feature: approved, matches }
+  return { tone: 'fair' as RiskTone, label: '需核对DFO', feature: undefined, matches }
+}
+
+function shellfishPopupHtml(props: Partial<ShellfishFeatureProperties>) {
+  const closedSpecies = listProperty(props.closedSpecies)
+  const openSpecies = listProperty(props.openSpecies)
+  const closed = closedSpecies.length ? `<p>关闭：${escapeHtml(closedSpecies.slice(0, 8).join('、'))}${closedSpecies.length > 8 ? '…' : ''}</p>` : ''
+  const open = openSpecies.length ? `<p>候选开放：${escapeHtml(openSpecies.slice(0, 8).join('、'))}${openSpecies.length > 8 ? '…' : ''}</p>` : ''
+  const notice = props.poNum ? ` · ${escapeHtml(props.poNum)}` : ''
+  return `<div class="map-popup"><strong>${escapeHtml(props.name ?? props.label ?? 'DFO CSSP')}</strong><span>${escapeHtml(props.label ?? '贝类规则')}${notice}</span><p>${escapeHtml(props.summary ?? 'DFO CSSP 贝类采捕状态。')}</p>${closed}${open}</div>`
+}
+
+function listProperty(value: unknown): string[] {
+  if (Array.isArray(value)) return value.map(String)
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value)
+      if (Array.isArray(parsed)) return parsed.map(String)
+    } catch {
+      return value.split(',').map((item) => item.trim()).filter(Boolean)
+    }
+  }
+  return []
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
 }
 
 function habitatGeoJson(): GeoJSON.FeatureCollection<GeoJSON.Geometry> {
@@ -1353,6 +1409,7 @@ function MapView({
   const [isTimelinePlaying, setIsTimelinePlaying] = useState(false)
   const [showDepth, setShowDepth] = useState(true)
   const [showRules, setShowRules] = useState(true)
+  const [showShellfish, setShowShellfish] = useState(true)
   const [showHabitat, setShowHabitat] = useState(false)
   const [depthInfo, setDepthInfo] = useState<NonnaDepthInfo>({ status: 'loading', source: 'CHS NONNA 100 WCS' })
 
@@ -1538,6 +1595,70 @@ function MapView({
           'text-halo-width': 1.8,
         },
       })
+      map.addSource('shellfish-zones', { type: 'geojson', data: shellfishGeoJson(data) })
+      map.addLayer({
+        id: 'shellfish-classification-fill',
+        type: 'fill',
+        source: 'shellfish-zones',
+        minzoom: 8.3,
+        filter: ['==', ['get', 'layerType'], 'classification'],
+        paint: {
+          'fill-color': ['match', ['get', 'status'], 'prohibited', '#b91c1c', 'approved', '#059669', '#64748b'],
+          'fill-opacity': ['interpolate', ['linear'], ['zoom'], 8.3, 0.06, 11, 0.11],
+        },
+      })
+      map.addLayer({
+        id: 'shellfish-harvest-line',
+        type: 'line',
+        source: 'shellfish-zones',
+        minzoom: 8,
+        filter: ['==', ['get', 'layerType'], 'harvest-area'],
+        paint: {
+          'line-color': '#0f766e',
+          'line-width': ['interpolate', ['linear'], ['zoom'], 8, 0.8, 11, 1.8],
+          'line-opacity': 0.58,
+          'line-dasharray': [2, 2],
+        },
+      })
+      map.addLayer({
+        id: 'shellfish-closure-fill',
+        type: 'fill',
+        source: 'shellfish-zones',
+        filter: ['==', ['get', 'layerType'], 'operational-closure'],
+        paint: {
+          'fill-color': ['match', ['get', 'status'], 'closed-all-bivalves', '#dc2626', 'species-specific-closure', '#f97316', '#64748b'],
+          'fill-opacity': ['interpolate', ['linear'], ['zoom'], 6, 0.12, 9, 0.20, 12, 0.28],
+        },
+      })
+      map.addLayer({
+        id: 'shellfish-closure-line',
+        type: 'line',
+        source: 'shellfish-zones',
+        filter: ['==', ['get', 'layerType'], 'operational-closure'],
+        paint: {
+          'line-color': ['match', ['get', 'status'], 'closed-all-bivalves', '#991b1b', 'species-specific-closure', '#c2410c', '#475569'],
+          'line-width': ['interpolate', ['linear'], ['zoom'], 6, 1.1, 10, 2.2, 13, 3],
+          'line-opacity': 0.88,
+        },
+      })
+      map.addLayer({
+        id: 'shellfish-closure-label',
+        type: 'symbol',
+        source: 'shellfish-zones',
+        minzoom: 8.2,
+        filter: ['==', ['get', 'layerType'], 'operational-closure'],
+        layout: {
+          'text-field': ['concat', ['get', 'label'], ' · ', ['get', 'name']],
+          'text-size': ['interpolate', ['linear'], ['zoom'], 8.2, 10, 11, 12],
+          'text-font': ['Open Sans Bold'],
+          'text-allow-overlap': false,
+        },
+        paint: {
+          'text-color': ['match', ['get', 'status'], 'closed-all-bivalves', '#7f1d1d', 'species-specific-closure', '#9a3412', '#334155'],
+          'text-halo-color': '#ffffff',
+          'text-halo-width': 1.7,
+        },
+      })
       map.addLayer({
         id: 'selected-forecast-halo',
         type: 'circle',
@@ -1637,6 +1758,21 @@ function MapView({
           .setHTML(`<div class="map-popup"><strong>${props.name ?? 'Rockfish Conservation Area'}</strong><span>${props.label ?? 'RCA禁区'} · ${props.kind ?? 'RCA'}${areaText}</span><p>${props.summary ?? 'DFO Rockfish Conservation Area。出海前请核对官方规则。'}</p></div>`)
           .addTo(map)
       })
+      const showShellfishPopup = (event: maplibregl.MapLayerMouseEvent) => {
+        const feature = event.features?.[0]
+        const props = feature?.properties ?? {}
+        setWorkbenchPanel('shellfish')
+        setInspectorOpen(true)
+        setInspectorPoint({ x: event.point.x, y: event.point.y })
+        new maplibregl.Popup({ closeButton: false, maxWidth: '340px' })
+          .setLngLat(event.lngLat)
+          .setHTML(shellfishPopupHtml(props as Partial<ShellfishFeatureProperties>))
+          .addTo(map)
+      }
+      map.on('click', 'shellfish-closure-fill', showShellfishPopup)
+      map.on('click', 'shellfish-closure-line', showShellfishPopup)
+      map.on('click', 'shellfish-classification-fill', showShellfishPopup)
+      map.on('click', 'shellfish-harvest-line', showShellfishPopup)
       const showHabitatPopup = (event: maplibregl.MapLayerMouseEvent) => {
         const feature = event.features?.[0]
         const props = feature?.properties ?? {}
@@ -1651,13 +1787,17 @@ function MapView({
       map.on('mouseleave', 'canada-current-arrows', () => { map.getCanvas().style.cursor = '' })
       map.on('mouseenter', 'regulation-zone-fill', () => { map.getCanvas().style.cursor = 'pointer' })
       map.on('mouseleave', 'regulation-zone-fill', () => { map.getCanvas().style.cursor = '' })
+      map.on('mouseenter', 'shellfish-closure-fill', () => { map.getCanvas().style.cursor = 'pointer' })
+      map.on('mouseleave', 'shellfish-closure-fill', () => { map.getCanvas().style.cursor = '' })
+      map.on('mouseenter', 'shellfish-classification-fill', () => { map.getCanvas().style.cursor = 'pointer' })
+      map.on('mouseleave', 'shellfish-classification-fill', () => { map.getCanvas().style.cursor = '' })
       map.on('mouseenter', 'habitat-zone-line', () => { map.getCanvas().style.cursor = 'pointer' })
       map.on('mouseleave', 'habitat-zone-line', () => { map.getCanvas().style.cursor = '' })
       map.on('mouseenter', 'habitat-zone-point', () => { map.getCanvas().style.cursor = 'pointer' })
       map.on('mouseleave', 'habitat-zone-point', () => { map.getCanvas().style.cursor = '' })
       map.on('click', (event) => {
         const handledFeatures = map.queryRenderedFeatures(event.point, {
-          layers: ['canada-current-arrows', 'canada-current-labels', 'regulation-zone-fill', 'habitat-zone-line', 'habitat-zone-point'],
+          layers: ['canada-current-arrows', 'canada-current-labels', 'regulation-zone-fill', 'shellfish-closure-fill', 'shellfish-classification-fill', 'shellfish-harvest-line', 'habitat-zone-line', 'habitat-zone-point'],
         })
         if (handledFeatures.length) return
         setInspectorPoint({ x: event.point.x, y: event.point.y })
@@ -1710,8 +1850,9 @@ function MapView({
     }
     setVisibility(['nonna-bathymetry'], showDepth)
     setVisibility(['regulation-zone-fill', 'regulation-zone-line', 'regulation-zone-label'], showRules)
+    setVisibility(['shellfish-classification-fill', 'shellfish-harvest-line', 'shellfish-closure-fill', 'shellfish-closure-line', 'shellfish-closure-label'], showShellfish)
     setVisibility(['habitat-zone-line', 'habitat-zone-point', 'habitat-zone-label'], showHabitat)
-  }, [showDepth, showHabitat, showRules])
+  }, [showDepth, showHabitat, showRules, showShellfish])
 
   function searchLocation() {
     const parts = searchText
@@ -1835,6 +1976,7 @@ function MapView({
         <div className="map-layer-toggles" aria-label="地图智能图层">
           <button className={showDepth ? 'active' : ''} onClick={() => setShowDepth((value) => !value)} type="button">深度</button>
           <button className={showRules ? 'active danger' : 'danger'} onClick={() => setShowRules((value) => !value)} type="button">禁区</button>
+          <button className={showShellfish ? 'active shellfish' : 'shellfish'} onClick={() => setShowShellfish((value) => !value)} type="button">贝类</button>
           <button className={showHabitat ? 'active' : ''} onClick={() => setShowHabitat((value) => !value)} type="button">地形待接</button>
         </div>
       </div>
@@ -2424,6 +2566,17 @@ function ForecastDetail({
     : depthInfo.status === 'loading'
       ? depthInfo.source
       : depthInfo.message
+  const shellfishStatus = findShellfishStatus(data.shellfish, forecast.lng, forecast.lat)
+  const shellfishFeature = shellfishStatus.feature?.properties
+  const shellfishDetail = shellfishFeature?.status === 'closed-all-bivalves'
+    ? `${shellfishFeature.name} · ${shellfishFeature.poNum ?? 'DFO CSSP'}`
+    : shellfishFeature?.status === 'species-specific-closure'
+      ? `${shellfishFeature.name} · 看物种`
+      : shellfishFeature?.status === 'prohibited'
+        ? 'CSSP Prohibited classification'
+        : shellfishFeature?.status === 'approved'
+          ? '未命中当前闭区仍需核对'
+          : '样本范围或图层未覆盖'
   return (
     <div className="panel detail-panel">
       <div className="detail-top">
@@ -2455,6 +2608,10 @@ function ForecastDetail({
         <div className={activeRca ? 'risk-closed' : 'risk-restricted'}>
           <strong>{activeRca ? '命中RCA禁区' : '规则需核对'}</strong>
           <span>{activeRca ? `${activeRca.properties.name} · DFO RCA` : matchedRules.map((rule) => `${rule.area} ${statusName(rule.status)}`).join(' · ') || '当前未命中限制规则'}</span>
+        </div>
+        <div className={toneClass(shellfishStatus.tone)}>
+          <strong>{shellfishStatus.label}</strong>
+          <span>{shellfishDetail}</span>
         </div>
       </div>
       {panel === 'forecast' && (
@@ -2522,6 +2679,50 @@ function ForecastDetail({
                 </button>
               )
             })}
+          </div>
+        </div>
+      )}
+      {panel === 'shellfish' && (
+        <div className="workbench-panel shellfish-panel">
+          <div className={`shellfish-decision ${toneClass(shellfishStatus.tone)}`}>
+            <ShellIcon size={22} />
+            <div>
+              <strong>{shellfishStatus.label}</strong>
+              <span>{shellfishDetail}</span>
+            </div>
+          </div>
+          <div className="shellfish-summary-grid">
+            <div>
+              <span>当前点</span>
+              <strong>{forecast.lat.toFixed(4)}, {forecast.lng.toFixed(4)}</strong>
+              <small>样本：Tofino / PFMA Area 24 附近</small>
+            </div>
+            <div>
+              <span>贝类逻辑</span>
+              <strong>{shellfishFeature?.allBivalvesClosed ? '全贝类关闭' : shellfishFeature?.openSpecies?.length ? '只看候选开放物种' : '必须核对物种'}</strong>
+              <small>DFO CSSP 闭区、多边形分类和 Area 24 规则叠加</small>
+            </div>
+            <div>
+              <span>海参</span>
+              <strong>Area 24: {data.shellfish.speciesRules.seaCucumber.status === 'open' ? 'Open' : 'Closed'} / {data.shellfish.speciesRules.seaCucumber.dailyLimit} 只</strong>
+              <small>{data.shellfish.speciesRules.seaCucumber.gear}</small>
+            </div>
+          </div>
+          {shellfishFeature?.closedSpecies?.length ? (
+            <div className="species-list closed-list">
+              <strong>当前闭区关闭物种</strong>
+              <span>{shellfishFeature.closedSpecies.join('、')}</span>
+            </div>
+          ) : null}
+          {shellfishFeature?.openSpecies?.length ? (
+            <div className="species-list open-list">
+              <strong>记录中候选开放物种</strong>
+              <span>{shellfishFeature.openSpecies.join('、')}</span>
+            </div>
+          ) : null}
+          <div className="shellfish-warning">
+            <AlertTriangle size={16} />
+            <span>这不是最终法律许可。采捕前还要核对当天 DFO Area 24 页面、CSSP/SHELLI 地图、养殖场边界、Pacific Rim National Park/保护区、现场标牌和你的 licence 条件。</span>
           </div>
         </div>
       )}
